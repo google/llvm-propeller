@@ -80,6 +80,7 @@ std::unique_ptr<CFGNode> CreateNodeFromNodePb(int function_index,
       /*bb_index=*/nodepb.bb_id(),
       /*bb_id=*/nodepb.bb_id(), /*size=*/nodepb.size(),
       /*metadata=*/ConvertFromPb(nodepb.metadata()),
+      /*hash*/nodepb.hash(),
       /*function_index=*/function_index);
 }
 

@@ -33,7 +33,7 @@ message InputProfile {
   ProfileType type = 2;
 }
 
-// Next Available: 18.
+// Next Available: 19.
 message PropellerOptions {
   // binary file name.
   string binary_name = 1;
@@ -88,6 +88,9 @@ message PropellerOptions {
 
   // Write the edge profiles in the cluster file.
   bool write_cfg_profile = 16 [default = true];
+
+  // Write the basic block hash in the cluster file.
+  bool write_bb_hash = 18 [default = false];
 }
 
 // Next Available: 15.
