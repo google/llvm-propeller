@@ -58,21 +58,20 @@ MiniDisassembler::Create(const llvm::object::ObjectFile* object_file) {
     return absl::FailedPreconditionError(absl::StrFormat(
         "no target for triple '%s': %s", triple.getArchName(), err));
   }
-  disassembler->mri_ =
-      absl::WrapUnique(target->createMCRegInfo(triple.getTriple()));
+  disassembler->mri_ = absl::WrapUnique(target->createMCRegInfo(triple));
   if (disassembler->mri_ == nullptr) {
     return absl::FailedPreconditionError(absl::StrFormat(
         "createMCRegInfo failed for triple '%s'", triple.getArchName()));
   }
   disassembler->asm_info_ = absl::WrapUnique(target->createMCAsmInfo(
-      *disassembler->mri_, triple.getTriple(), llvm::MCTargetOptions()));
+      *disassembler->mri_, triple, llvm::MCTargetOptions()));
   if (disassembler->asm_info_ == nullptr) {
     return absl::FailedPreconditionError(absl::StrFormat(
         "createMCAsmInfo failed for triple '%s'", triple.getArchName()));
   }
 
-  disassembler->sti_ = absl::WrapUnique(target->createMCSubtargetInfo(
-      triple.getTriple(), /*CPU=*/"", /*Features=*/""));
+  disassembler->sti_ = absl::WrapUnique(
+      target->createMCSubtargetInfo(triple, /*CPU=*/"", /*Features=*/""));
   if (disassembler->sti_ == nullptr) {
     return absl::FailedPreconditionError(absl::StrFormat(
         "createMCSubtargetInfo failed for triple '%s'", triple.getArchName()));
