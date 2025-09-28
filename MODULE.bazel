@@ -63,3 +63,4 @@ bazel_dep(name = "rules_cc", version = "0.2.3")
 
 # TODO: b/367348146 - Remove this transitive dependency once we ingest LLVM with bzlmod.
 bazel_dep(name = "rules_python", version = "1.0.0")
+bazel_dep(name = "rules_shell", version = "0.6.1")
