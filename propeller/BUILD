@@ -978,6 +978,7 @@ cc_binary(
         ":propeller_options_cc_proto",
         ":status_macros",
         ":text_proto_flag",
+        "//file/colossus/public:cns",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",
