@@ -52,8 +52,7 @@ MiniDisassembler::Create(const llvm::object::ObjectFile* object_file) {
 
   llvm::Triple triple;
   triple.setArch(llvm::Triple::ArchType(object_file->getArch()));
-  const llvm::Target* target =
-      llvm::TargetRegistry::lookupTarget(triple.normalize(), err);
+  const llvm::Target* target = llvm::TargetRegistry::lookupTarget(triple, err);
   if (target == nullptr) {
     return absl::FailedPreconditionError(absl::StrFormat(
         "no target for triple '%s': %s", triple.getArchName(), err));
