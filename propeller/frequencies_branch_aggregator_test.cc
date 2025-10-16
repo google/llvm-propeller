@@ -143,16 +143,19 @@ TEST(FrequenciesBranchAggregator, AggregateInfersUnconditionalFallthroughs) {
                                      BBAddrMap::BBEntry(
                                          /*ID=*/0, /*Offset=*/0, /*Size=*/4,
                                          /*Metadata=*/{},
-                                         /*CallsiteOffsets=*/{}),
+                                         /*CallsiteOffsets=*/{},
+                                         /*Hash=*/0),
                                      BBAddrMap::BBEntry(
                                          /*ID=*/1, /*Offset=*/8, /*Size=*/8,
                                          /*Metadata=*/{.CanFallThrough = true},
-                                         /*CallsiteOffsets=*/{}),
+                                         /*CallsiteOffsets=*/{},
+                                         /*Hash=*/0),
                                      BBAddrMap::BBEntry(
                                          /*ID=*/2, /*Offset=*/16,
                                          /*Size=*/4,
                                          /*Metadata=*/{},
-                                         /*CallsiteOffsets=*/{}),
+                                         /*CallsiteOffsets=*/{},
+                                         /*Hash=*/0),
                                  }}}}},
                          /*bb_handles=*/
                          {{.function_index = 0, .bb_index = 0},
@@ -184,19 +187,19 @@ TEST(FrequenciesBranchAggregator, AggregatePropagatesFallthroughs) {
                                      BBAddrMap::BBEntry(
                                          /*ID=*/0, /*Offset=*/0x0, /*Size=*/4,
                                          /*Metadata=*/{.CanFallThrough = true},
-                                         /*CallsiteOffsets=*/{}),
+                                         /*CallsiteOffsets=*/{}, /*Hash=*/0),
                                      BBAddrMap::BBEntry(
                                          /*ID=*/1, /*Offset=*/0x4, /*Size=*/8,
                                          /*Metadata=*/{.CanFallThrough = true},
-                                         /*CallsiteOffsets=*/{}),
+                                         /*CallsiteOffsets=*/{}, /*Hash=*/0),
                                      BBAddrMap::BBEntry(
                                          /*ID=*/2, /*Offset=*/0x10, /*Size=*/4,
                                          /*Metadata=*/{.CanFallThrough = true},
-                                         /*CallsiteOffsets=*/{}),
+                                         /*CallsiteOffsets=*/{}, /*Hash=*/0),
                                      BBAddrMap::BBEntry(
                                          /*ID=*/3, /*Offset=*/0x14, /*Size=*/4,
                                          /*Metadata=*/{},
-                                         /*CallsiteOffsets=*/{}),
+                                         /*CallsiteOffsets=*/{}, /*Hash=*/0),
                                  }}}}},
                          /*bb_handles=*/
                          {{.function_index = 0, .bb_index = 0},
@@ -226,11 +229,11 @@ TEST(FrequenciesBranchAggregator, AggregateRespectsNotTakenBranches) {
                                      BBAddrMap::BBEntry(
                                          /*ID=*/0, /*Offset=*/0, /*Size=*/4,
                                          /*Metadata=*/{.CanFallThrough = true},
-                                         /*CallsiteOffsets=*/{}),
+                                         /*CallsiteOffsets=*/{}, /*Hash=*/0),
                                      BBAddrMap::BBEntry(
                                          /*ID=*/1, /*Offset=*/8, /*Size=*/8,
                                          /*Metadata=*/{},
-                                         /*CallsiteOffsets=*/{}),
+                                         /*CallsiteOffsets=*/{}, /*Hash=*/0),
                                  }}}}},
                          /*bb_handles=*/
                          {{.function_index = 0, .bb_index = 0},
@@ -258,15 +261,15 @@ TEST(FrequenciesBranchAggregator, AggregateIgnoresMidFunctionNotTakenBranches) {
                                      BBAddrMap::BBEntry(
                                          /*ID=*/0, /*Offset=*/0, /*Size=*/4,
                                          /*Metadata=*/{},
-                                         /*CallsiteOffsets=*/{}),
+                                         /*CallsiteOffsets=*/{}, /*Hash=*/0),
                                      BBAddrMap::BBEntry(
                                          /*ID=*/1, /*Offset=*/8, /*Size=*/8,
                                          /*Metadata=*/{.CanFallThrough = true},
-                                         /*CallsiteOffsets=*/{}),
+                                         /*CallsiteOffsets=*/{}, /*Hash=*/0),
                                      BBAddrMap::BBEntry(
                                          /*ID=*/2, /*Offset=*/16, /*Size=*/4,
                                          /*Metadata=*/{},
-                                         /*CallsiteOffsets=*/{}),
+                                         /*CallsiteOffsets=*/{}, /*Hash=*/0),
                                  }}}}},
                          /*bb_handles=*/
                          {{.function_index = 0, .bb_index = 0},
@@ -298,11 +301,11 @@ TEST(FrequenciesBranchAggregator,
                                      BBAddrMap::BBEntry(
                                          /*ID=*/0, /*Offset=*/0, /*Size=*/4,
                                          /*Metadata=*/{.CanFallThrough = false},
-                                         /*CallsiteOffsets=*/{}),
+                                         /*CallsiteOffsets=*/{}, /*Hash=*/0),
                                      BBAddrMap::BBEntry(
                                          /*ID=*/1, /*Offset=*/8, /*Size=*/8,
                                          /*Metadata=*/{},
-                                         /*CallsiteOffsets=*/{}),
+                                         /*CallsiteOffsets=*/{}, /*Hash=*/0),
                                  }}}}},
                          /*bb_handles=*/
                          {{.function_index = 0, .bb_index = 0},
@@ -328,15 +331,15 @@ TEST(FrequenciesBranchAggregator, AggregatesBlocksEndingInBranches) {
                                      BBAddrMap::BBEntry(
                                          /*ID=*/0, /*Offset=*/0x0, /*Size=*/4,
                                          /*Metadata=*/{.CanFallThrough = true},
-                                         /*CallsiteOffsets=*/{}),
+                                         /*CallsiteOffsets=*/{}, /*Hash=*/0),
                                      BBAddrMap::BBEntry(
                                          /*ID=*/1, /*Offset=*/0x4, /*Size=*/8,
                                          /*Metadata=*/{.CanFallThrough = true},
-                                         /*CallsiteOffsets=*/{}),
+                                         /*CallsiteOffsets=*/{}, /*Hash=*/0),
                                      BBAddrMap::BBEntry(
                                          /*ID=*/2, /*Offset=*/0x14, /*Size=*/4,
                                          /*Metadata=*/{},
-                                         /*CallsiteOffsets=*/{}),
+                                         /*CallsiteOffsets=*/{}, /*Hash=*/0),
                                  }}}}},
                          /*bb_handles=*/
                          {{.function_index = 0, .bb_index = 0},
