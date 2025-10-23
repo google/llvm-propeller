@@ -19,7 +19,7 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 # If updating this metadata becomes tedious, we can automatically sync to the
 # internal version.
 # LINT.IfChange(llvm_commit_hash)
-LLVM_COMMIT = "113f01aa82d055410f22a9d03b3468fa68600589"
+LLVM_COMMIT = "32de3b9ef9e7e8debc14416e968456ca13b48bea"
 # LINT.ThenChange(CMake/LLVM/LLVM.cmake:commit_hash)
 
 new_git_repository(
