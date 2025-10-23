@@ -44,7 +44,7 @@ absl::StatusOr<std::string> GetContents(absl::string_view path) {
   return stringstream.str();
 }
 
-absl::StatusOr<std::string> GetContentsIgnoringCommentLines(
+absl::StatusOr<std::string> GetContentsIgnoringCommentAndCfgProfileLines(
     absl::string_view path) {
   // Open the file in binary mode if it exists.
   std::ifstream filestream((std::string(path)), std::ios_base::binary);
@@ -56,7 +56,7 @@ absl::StatusOr<std::string> GetContentsIgnoringCommentLines(
   std::string contents;
   std::string line;
   while (std::getline(filestream, line)) {
-    if (line.starts_with("#")) continue;
+    if (line.starts_with("g") || line.starts_with("#")) continue;
     absl::StrAppend(&contents, line);
     // If a newline was encountered (eof was not reached), add a newline to the
     // output.

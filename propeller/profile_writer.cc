@@ -104,30 +104,6 @@ void DumpCfgs(const PropellerProfile& profile,
     }
   }
 }
-
-// Writes the intra-function edge profile of `cfg` into `out` in a single line
-// which starts with the "#cfg" marker.
-// For each CFGNode with non-zero frequency, it prints out the node and edge
-// frequencies in the following format:
-// "<bb>:<bb_freq>,<succ_bb_1>:<edge_freq_1>,<succ_bb_2>:<edge_freq_2>,..."
-// which starts first with the full bb id and frequency of that node, followed
-// by the successors and their edge frequencies. Please note that the edge
-// weights may not precisely add up to the node frequency.
-void WriteCfgProfile(const ControlFlowGraph& cfg, std::ofstream& out) {
-  out << "#cfg";
-  cfg.ForEachNodeRef([&](const CFGNode& node) {
-    int node_frequency = node.CalculateFrequency();
-    if (node_frequency == 0) return;
-    out << " " << node.full_intra_cfg_id().profile_bb_id() << ":"
-        << node_frequency;
-    node.ForEachOutEdgeInOrder([&](const CFGEdge& edge) {
-      if (!edge.IsBranchOrFallthrough()) return;
-      out << "," << edge.sink()->full_intra_cfg_id().profile_bb_id() << ":"
-          << edge.weight();
-    });
-  });
-  out << "\n";
-}
 }  // namespace
 
 void PropellerProfileWriter::Write(const PropellerProfile& profile) const {
@@ -279,5 +255,25 @@ void PropellerProfileWriter::Write(const PropellerProfile& profile) const {
   }
   if (options_.has_cfg_dump_dir_name())
     DumpCfgs(profile, options_.cfg_dump_dir_name());
+}
+
+void PropellerProfileWriter::WriteCfgProfile(const ControlFlowGraph& cfg,
+                                             std::ofstream& out) const {
+  out << profile_encoding_.cfg_profile_specifier;
+  bool first = true;
+  for (int i = 0; i < cfg.nodes().size(); ++i) {
+    const CFGNode& node = *cfg.nodes()[i];
+    int node_frequency = node.CalculateFrequency();
+    if (node_frequency == 0) continue;
+    if (!first) out << " ";
+    out << node.full_intra_cfg_id().profile_bb_id() << ":" << node_frequency;
+    node.ForEachOutEdgeInOrder([&](const CFGEdge& edge) {
+      if (!edge.IsBranchOrFallthrough()) return;
+      out << "," << edge.sink()->full_intra_cfg_id().profile_bb_id() << ":"
+          << edge.weight();
+    });
+    first = false;
+  }
+  out << "\n";
 }
 }  // namespace propeller
