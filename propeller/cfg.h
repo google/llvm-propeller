@@ -83,6 +83,14 @@ struct CfgChangeFromPathCloning {
     bool src_is_cloned, sink_is_cloned;
     CFGEdgeKind kind;
     int weight;
+
+    template <typename Sink>
+    friend void AbslStringify(Sink& sink, const IntraEdgeReroute& reroute) {
+      absl::Format(&sink, "(%d%s->%d%s w: %d k: %s)", reroute.src_bb_index,
+                   reroute.src_is_cloned ? "'" : "", reroute.sink_bb_index,
+                   reroute.sink_is_cloned ? "'" : "", reroute.weight,
+                   GetCfgEdgeKindString(reroute.kind));
+    }
   };
   // Represents rerouting the control flow for a single inter-function edge.
   struct InterEdgeReroute {
@@ -90,17 +98,27 @@ struct CfgChangeFromPathCloning {
     // bb indexes of its source and sink.
     int src_function_index, sink_function_index;
     int src_bb_index, sink_bb_index;
-    // Whether source or sink will be cloned.
+    // Whether source or sink will be cloned for the edge through which the
+    // control flow must be rerouted.
     bool src_is_cloned, sink_is_cloned;
     CFGEdgeKind kind;
     int weight;
+
+    template <typename Sink>
+    friend void AbslStringify(Sink& sink, const InterEdgeReroute& reroute) {
+      absl::Format(&sink, "(F%d:%d%s->%d:%d%s w: %d k: %s)",
+                   reroute.src_function_index, reroute.src_bb_index,
+                   reroute.src_is_cloned ? "'" : "",
+                   reroute.sink_function_index, reroute.sink_bb_index,
+                   reroute.sink_is_cloned ? "'" : "", reroute.weight,
+                   GetCfgEdgeKindString(reroute.kind));
+    }
   };
 
   // Predecessor block of the path;
   int path_pred_bb_index;
   // bb_indexes of CFG nodes along the path (excluding the path predecessor).
   std::vector<int> path_to_clone;
-
   // The paths to drop from the CFG. The outgoing edges (inter- and intra-) of
   // from these paths have missing path predecessor info and cannot be
   // confidently rerouted. So we drop their associated weights from the CFG.
@@ -109,6 +127,22 @@ struct CfgChangeFromPathCloning {
   std::vector<IntraEdgeReroute> intra_edge_reroutes;
   // Inter-function edge weight reroutes.
   std::vector<InterEdgeReroute> inter_edge_reroutes;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink,
+                            const CfgChangeFromPathCloning& change) {
+    absl::Format(&sink,
+                 "path_pred: %d, path_to_clone: [%s], paths_to_drop: [%s], "
+                 "intra_reroutes: [%s], inter_reroutes: [%s]",
+                 change.path_pred_bb_index,
+                 absl::StrJoin(change.path_to_clone, ", "),
+                 absl::StrJoin(change.paths_to_drop, ", ",
+                               [](auto* out, const PathNode* p) {
+                                 absl::StrAppend(out, p->path_from_root());
+                               }),
+                 absl::StrJoin(change.intra_edge_reroutes, ", "),
+                 absl::StrJoin(change.inter_edge_reroutes, ", "));
+  }
 };
 
 class ControlFlowGraph {

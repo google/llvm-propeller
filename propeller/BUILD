@@ -1569,6 +1569,7 @@ cc_test(
         ":propeller_options_cc_proto",
         ":status_testing_macros",
         "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/container:node_hash_map",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:status_matchers",
