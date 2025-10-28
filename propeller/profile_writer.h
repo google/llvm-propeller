@@ -34,15 +34,6 @@ class PropellerProfileWriter {
   void Write(const PropellerProfile& profile) const;
 
  private:
-  // Writes the intra-function edge profile of `cfg` into `out`.
-  // For each CFGNode with non-zero frequency, it prints out the node and edge
-  // frequencies in the following format:
-  // "<bb>:<bb_freq>,<succ_bb_1>:<edge_freq_1>,<succ_bb_2>:<edge_freq_2>,..."
-  // which starts first with the full bb id and frequency of that node, followed
-  // by the successors and their edge frequencies. Please note that the edge
-  // weights may not precisely add up to the node frequency.
-  void WriteCfgProfile(const ControlFlowGraph& cfg, std::ofstream& out) const;
-
   struct ProfileEncoding {
     ClusterEncodingVersion version;
     std::string version_specifier;
@@ -51,7 +42,6 @@ class PropellerProfileWriter {
     std::string module_name_specifier;
     std::string cluster_specifier;
     std::string clone_path_specifier;
-    std::string cfg_profile_specifier;
   };
 
   static ProfileEncoding GetProfileEncoding(
@@ -64,8 +54,7 @@ class PropellerProfileWriter {
                 .function_name_separator = "/",
                 .module_name_specifier = " M=",
                 .cluster_specifier = "!!",
-                .clone_path_specifier = "#NOT_SUPPORTED",
-                .cfg_profile_specifier = "#cfg"};
+                .clone_path_specifier = "#NOT_SUPPORTED"};
       case ClusterEncodingVersion::VERSION_1:
         return {.version = version,
                 .version_specifier = "v1",
@@ -73,8 +62,7 @@ class PropellerProfileWriter {
                 .function_name_separator = " ",
                 .module_name_specifier = "m ",
                 .cluster_specifier = "c",
-                .clone_path_specifier = "p",
-                .cfg_profile_specifier = "g "};
+                .clone_path_specifier = "p"};
       default:
         LOG(FATAL) << "Unknown value for ClusterEncodingVersion: "
                    << static_cast<int>(version);

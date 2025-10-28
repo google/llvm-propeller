@@ -45,7 +45,7 @@ using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::propeller_file::GetContents;
-using ::propeller_file::GetContentsIgnoringCommentAndCfgProfileLines;
+using ::propeller_file::GetContentsIgnoringCommentLines;
 using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::Not;
@@ -63,9 +63,8 @@ struct GeneratePropellerProfileTestCase {
   PropellerOptions options;
   std::string expected_cc_profile_path;
   std::string expected_ld_profile_path;
-  // If true, ignore lines starting with '#' and 'g' in the actual cluster
-  // profile.
-  bool ignore_comment_and_cfg_profile_lines_in_cc_profile = true;
+  // If true, ignore lines starting with '#' in the actual cluster profile.
+  bool ignore_comment_lines_in_cc_profile = true;
 };
 
 TEST(GeneratePropellerProfiles, UsesPassedProvider) {

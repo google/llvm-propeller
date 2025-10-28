@@ -29,9 +29,8 @@ namespace propeller_file {
 absl::StatusOr<std::string> GetContents(absl::string_view path);
 
 // Reads the contents of the file `path` and returns it as a string, ignoring
-// lines starting with 'g' which are CFG profiles, and lines starting with '#'
-// which are comments.
-absl::StatusOr<std::string> GetContentsIgnoringCommentAndCfgProfileLines(
+// lines starting with '#'.
+absl::StatusOr<std::string> GetContentsIgnoringCommentLines(
     absl::string_view path);
 
 // Reads a binary proto from the given path. The proto type is inferred from the
