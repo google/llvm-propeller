@@ -70,6 +70,14 @@ class CFGEdge final {
     return absl::StrCat(GetDotFormatLabelForEdgeKind(kind_), "#", weight_);
   }
 
+  // Returns true if this edge is an intra-function branch or fallthrough that
+  // is always taken based on the profile (and is not an indirect branch).
+  bool IsAlwaysTaken() const;
+
+  // Returns true if this edge is an intra-function branch that is an indirect
+  // branch.
+  bool IsIndirectBranch() const;
+
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const CFGEdge& edge);
 

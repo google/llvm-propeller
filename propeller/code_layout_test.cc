@@ -2037,5 +2037,101 @@ TEST(NodeChainBuilderTest, SortsIntraChainEdges) {
                   _))))));
 }
 
+TEST(CodeLayoutTest, PrioritizesFallthroughWithAlwaysFallthroughBonus) {
+  // CFG Diagram:
+  //
+  //       +------------------+
+  //       |        0         |
+  //       +------------------+
+  //              | 15
+  //              v
+  //       +------------------+
+  //  +--- |      1           | <---+
+  //  |    +------------------+     |
+  //  |                | 100        | 90
+  //  |                v            |
+  //  |    +------------------+     |
+  //  |    |        2         |-----+
+  //  |    +------------------+
+  //  |           | 10
+  //  |5          v
+  //  |    +------------------+
+  //  |    |        4         |
+  //  |    +------------------+
+  //  |           ^
+  //  |           | 5
+  //  |    +------------------+
+  //  +--> |        3         |
+  //       +------------------+
+  //
+  // Edge 3->4 is the "always fallthrough" candidate because it's the only
+  // non-zero weight edge from BB3.
+
+  std::unique_ptr<ProgramCfg> program_cfg = BuildFromCfgArg(
+      {.cfg_args = {
+           {".text",
+            0,
+            "func",
+            {{0x1000, 0, 0x10},
+             {0x1010, 1, 0x10},
+             {0x1020, 2, 0x10},
+             {0x1030, 3, 0x10},
+             {0x1040, 4, 0x10}},
+            {{0, 1, 15, CFGEdgeKind::kBranchOrFallthough},
+             {1, 2, 100, CFGEdgeKind::kBranchOrFallthough},  // 1 -> 2
+             {1, 3, 5, CFGEdgeKind::kBranchOrFallthough},    // 1 -> 3
+             {2, 1, 90,
+              CFGEdgeKind::kBranchOrFallthough},  // Backedge (Loop 1<=>2)
+             {2, 4, 10, CFGEdgeKind::kBranchOrFallthough},
+             // This is the always fallthrough edge.
+             {3, 4, 5, CFGEdgeKind::kBranchOrFallthough}}}}});
+
+  // Case 1: Default parameters (always_fallthrough_branch_weight = 0).
+  // The layout {0, 1, 2, 4, 3} is expected.
+  // The hot loop 1<=>2 keeps 1 and 2 together. BB3 is placed after BB4
+  // because the edge 3->4 has a low weight and no always_fallthrough bonus.
+  // The edge 2->4 (weight 10) pulls 4 closer to 2.
+  {
+    PropellerCodeLayoutParameters params;
+    params.set_chain_split(true);
+    params.set_always_fallthrough_branch_weight(0);
+    std::vector<FunctionChainInfo> all_func_chain_info =
+        CodeLayout(params, program_cfg->GetCfgs()).OrderAll();
+    ASSERT_THAT(all_func_chain_info, SizeIs(1));
+    EXPECT_THAT(all_func_chain_info[0],
+                FunctionChainInfoIs(
+                    0,
+                    ElementsAre(BbChainIs(
+                        0, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
+                                       BbBundleIs(ElementsAre(BbIdIs(1))),
+                                       BbBundleIs(ElementsAre(BbIdIs(2))),
+                                       BbBundleIs(ElementsAre(BbIdIs(4))),
+                                       BbBundleIs(ElementsAre(BbIdIs(3)))))),
+                    _, _, _));
+  }
+
+  // Case 2: High always_fallthrough_branch_weight.
+  // The edge 3->4 now gets a large score bonus (100). This makes placing BB4
+  // immediately after BB3 highly desirable, overriding other factors.
+  // The layout {0, 1, 2, 3, 4} is expected.
+  {
+    PropellerCodeLayoutParameters params;
+    params.set_chain_split(true);
+    params.set_always_fallthrough_branch_weight(100);
+    std::vector<FunctionChainInfo> all_func_chain_info =
+        CodeLayout(params, program_cfg->GetCfgs()).OrderAll();
+    ASSERT_THAT(all_func_chain_info, SizeIs(1));
+    EXPECT_THAT(all_func_chain_info[0],
+                FunctionChainInfoIs(
+                    0,
+                    ElementsAre(BbChainIs(
+                        0, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
+                                       BbBundleIs(ElementsAre(BbIdIs(1))),
+                                       BbBundleIs(ElementsAre(BbIdIs(2))),
+                                       BbBundleIs(ElementsAre(BbIdIs(3))),
+                                       BbBundleIs(ElementsAre(BbIdIs(4)))))),
+                    _, _, _));
+  }
+}
 }  // namespace
 }  // namespace propeller

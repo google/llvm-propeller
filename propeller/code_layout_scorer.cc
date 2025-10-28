@@ -47,8 +47,18 @@ double PropellerCodeLayoutScorer::GetEdgeScore(const CFGEdge& edge,
 
   if (edge.IsReturn()) src_sink_distance += edge.sink()->size() / 2;
 
-  if (src_sink_distance == 0 && edge.IsBranchOrFallthrough())
-    return edge.weight() * code_layout_params_.fallthrough_weight();
+  if (src_sink_distance == 0 && edge.IsBranchOrFallthrough()) {
+    double factor = code_layout_params_.fallthrough_weight();
+    // If the edge is always taken and is a direct branch or fallthrough, making
+    // it a fallthrough is even more beneficial because we will either get rid
+    // of the branch entirely or the branch will never enter the branch
+    // predictor.
+    // TODO(b/455732673): Assign different weights to the two cases above.
+    if (edge.IsAlwaysTaken() && !edge.IsIndirectBranch()) {
+      factor += code_layout_params_.always_fallthrough_branch_weight();
+    }
+    return edge.weight() * factor;
+  }
 
   double absolute_src_sink_distance =
       static_cast<double>(std::abs(src_sink_distance));

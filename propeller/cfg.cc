@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -32,6 +33,20 @@
 #include "propeller/path_node.h"
 
 namespace propeller {
+
+bool CFGEdge::IsAlwaysTaken() const {
+  if (!IsBranchOrFallthrough()) return false;
+  if (src_->has_indirect_branch()) return false;
+  if (weight_ == 0) return false;
+  return absl::c_none_of(src_->intra_outs(), [&](const CFGEdge* edge) {
+    return edge->IsBranchOrFallthrough() && edge->weight() != 0 && edge != this;
+  });
+}
+
+bool CFGEdge::IsIndirectBranch() const {
+  return kind_ == CFGEdgeKind::kBranchOrFallthough &&
+         src_->has_indirect_branch();
+}
 
 CFGEdge* ControlFlowGraph::CreateOrUpdateEdge(CFGNode* from, CFGNode* to,
                                               int weight, CFGEdgeKind kind,
