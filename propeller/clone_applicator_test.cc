@@ -127,19 +127,19 @@ INSTANTIATE_TEST_SUITE_P(
                          IsCfgEdge(NodeIntraIdIs(IntraCfgId{0, 0}),
                                    NodeIntraIdIs(IntraCfgId{2, 0}), 660, _),
                          IsCfgEdge(NodeIntraIdIs(IntraCfgId{1, 0}),
-                                   NodeIntraIdIs(IntraCfgId{3, 0}), 1, _),
+                                   NodeIntraIdIs(IntraCfgId{3, 0}), 0, _),
                          IsCfgEdge(NodeIntraIdIs(IntraCfgId{2, 0}),
                                    NodeIntraIdIs(IntraCfgId{3, 0}), 656, _),
                          IsCfgEdge(NodeIntraIdIs(IntraCfgId{2, 0}),
                                    NodeIntraIdIs(IntraCfgId{4, 0}), 10, _),
                          IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 0}),
-                                   NodeIntraIdIs(IntraCfgId{4, 0}), 4, _),
+                                   NodeIntraIdIs(IntraCfgId{4, 0}), 5, _),
                          IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 0}),
-                                   NodeIntraIdIs(IntraCfgId{5, 0}), 676, _),
+                                   NodeIntraIdIs(IntraCfgId{5, 0}), 649, _),
                          IsCfgEdge(NodeIntraIdIs(IntraCfgId{4, 0}),
                                    NodeIntraIdIs(IntraCfgId{5, 0}), 185, _),
                          IsCfgEdge(NodeIntraIdIs(IntraCfgId{1, 0}),
-                                   NodeIntraIdIs(IntraCfgId{3, 1}), 185, _),
+                                   NodeIntraIdIs(IntraCfgId{3, 1}), 186, _),
                          IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 1}),
                                    NodeIntraIdIs(IntraCfgId{4, 0}), 170, _),
                          IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 1}),
@@ -150,13 +150,13 @@ INSTANTIATE_TEST_SUITE_P(
                                                       .intra_cfg_id = {4, 0}}),
                              NodeInterIdIs(InterCfgId{.function_index = 7,
                                                       .intra_cfg_id = {0, 0}}),
-                             100, CFGEdgeKind::kCall),
+                             101, CFGEdgeKind::kCall),
                          IsCfgEdge(
                              NodeInterIdIs(InterCfgId{.function_index = 6,
                                                       .intra_cfg_id = {4, 0}}),
                              NodeInterIdIs(InterCfgId{.function_index = 8,
                                                       .intra_cfg_id = {0, 0}}),
-                             85, CFGEdgeKind::kCall),
+                             86, CFGEdgeKind::kCall),
                          IsCfgEdge(
                              NodeInterIdIs(InterCfgId{.function_index = 6,
                                                       .intra_cfg_id = {5, 0}}),
@@ -170,7 +170,7 @@ INSTANTIATE_TEST_SUITE_P(
                                                     .intra_cfg_id = {1, 0}}),
                            NodeInterIdIs(InterCfgId{.function_index = 6,
                                                     .intra_cfg_id = {4, 0}}),
-                           100, CFGEdgeKind::kRet)}))},
+                           101, CFGEdgeKind::kRet)}))},
                {8, CfgMatcher(
                        CfgNodesMatcher(), CfgIntraEdgesMatcher(),
                        CfgInterEdgesMatcher({IsCfgEdge(
@@ -186,7 +186,7 @@ INSTANTIATE_TEST_SUITE_P(
                                 .function_index = 10, .intra_cfg_id = {0, 0}}),
                             NodeInterIdIs(InterCfgId{.function_index = 6,
                                                      .intra_cfg_id = {4, 0}}),
-                            85, CFGEdgeKind::kRet)}))}}},
+                            86, CFGEdgeKind::kRet)}))}}},
          {.test_name = "Path3To4Pred1",
           .propeller_options = ParseTextProtoOrDie(R"pb(code_layout_params {
                                                           call_chain_clustering:
@@ -212,7 +212,7 @@ INSTANTIATE_TEST_SUITE_P(
                                           NodeIntraIdIs(IntraCfgId{2, 0}),
                                           660, _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{1, 0}),
-                                          NodeIntraIdIs(IntraCfgId{3, 0}), 1,
+                                          NodeIntraIdIs(IntraCfgId{3, 0}), 0,
                                           _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{2, 0}),
                                           NodeIntraIdIs(IntraCfgId{3, 0}),
@@ -221,17 +221,17 @@ INSTANTIATE_TEST_SUITE_P(
                                           NodeIntraIdIs(IntraCfgId{4, 0}), 10,
                                           _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 0}),
-                                          NodeIntraIdIs(IntraCfgId{4, 0}), 4,
+                                          NodeIntraIdIs(IntraCfgId{4, 0}), 5,
                                           _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 0}),
                                           NodeIntraIdIs(IntraCfgId{5, 0}),
-                                          676, _),
+                                          649, _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{4, 0}),
                                           NodeIntraIdIs(IntraCfgId{5, 0}), 15,
                                           _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{1, 0}),
                                           NodeIntraIdIs(IntraCfgId{3, 1}),
-                                          185, _),
+                                          186, _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 1}),
                                           NodeIntraIdIs(IntraCfgId{4, 1}),
                                           170, _),
@@ -249,7 +249,7 @@ INSTANTIATE_TEST_SUITE_P(
                                     NodeInterIdIs(
                                         InterCfgId{.function_index = 7,
                                                    .intra_cfg_id = {0, 0}}),
-                                    14, CFGEdgeKind::kCall),
+                                    15, CFGEdgeKind::kCall),
                                 IsCfgEdge(
                                     NodeInterIdIs(
                                         InterCfgId{.function_index = 6,
@@ -299,7 +299,7 @@ INSTANTIATE_TEST_SUITE_P(
                                        NodeInterIdIs(
                                            InterCfgId{.function_index = 6,
                                                       .intra_cfg_id = {4, 0}}),
-                                       14, CFGEdgeKind::kRet)}))},
+                                       15, CFGEdgeKind::kRet)}))},
                {8, CfgMatcher(
                        CfgNodesMatcher(), CfgIntraEdgesMatcher(),
                        CfgInterEdgesMatcher(
@@ -365,9 +365,9 @@ INSTANTIATE_TEST_SUITE_P(
                                           _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 0}),
                                           NodeIntraIdIs(IntraCfgId{4, 0}),
-                                          169, _),
+                                          170, _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 0}),
-                                          NodeIntraIdIs(IntraCfgId{5, 0}), 40,
+                                          NodeIntraIdIs(IntraCfgId{5, 0}), 13,
                                           _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{4, 0}),
                                           NodeIntraIdIs(IntraCfgId{5, 0}),
@@ -389,7 +389,7 @@ INSTANTIATE_TEST_SUITE_P(
                                     NodeInterIdIs(
                                         InterCfgId{.function_index = 7,
                                                    .intra_cfg_id = {0, 0}}),
-                                    100, CFGEdgeKind::kCall),
+                                    101, CFGEdgeKind::kCall),
                                 IsCfgEdge(
                                     NodeInterIdIs(
                                         InterCfgId{.function_index = 6,
@@ -397,7 +397,7 @@ INSTANTIATE_TEST_SUITE_P(
                                     NodeInterIdIs(
                                         InterCfgId{.function_index = 8,
                                                    .intra_cfg_id = {0, 0}}),
-                                    85, CFGEdgeKind::kCall),
+                                    86, CFGEdgeKind::kCall),
                                 IsCfgEdge(
                                     NodeInterIdIs(
                                         InterCfgId{.function_index = 6,
@@ -423,7 +423,7 @@ INSTANTIATE_TEST_SUITE_P(
                                       NodeInterIdIs(
                                           InterCfgId{.function_index = 6,
                                                      .intra_cfg_id = {4, 0}}),
-                                      100, CFGEdgeKind::kRet)}))},
+                                      101, CFGEdgeKind::kRet)}))},
                {8, CfgMatcher(
                        CfgNodesMatcher(), CfgIntraEdgesMatcher(),
                        CfgInterEdgesMatcher(
@@ -442,7 +442,7 @@ INSTANTIATE_TEST_SUITE_P(
                                               NodeInterIdIs(InterCfgId{
                                                   .function_index = 6,
                                                   .intra_cfg_id = {4, 0}}),
-                                              85, CFGEdgeKind::kRet)}))}}},
+                                              86, CFGEdgeKind::kRet)}))}}},
          {.test_name =
               "TwoPaths3Pred1And4Pred2WithNegativeCloningScoreThreshold",
           .propeller_options = ParseTextProtoOrDie(
@@ -468,7 +468,7 @@ INSTANTIATE_TEST_SUITE_P(
                                           NodeIntraIdIs(IntraCfgId{2, 0}),
                                           660, _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{1, 0}),
-                                          NodeIntraIdIs(IntraCfgId{3, 0}), 1,
+                                          NodeIntraIdIs(IntraCfgId{3, 0}), 0,
                                           _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{2, 0}),
                                           NodeIntraIdIs(IntraCfgId{3, 0}),
@@ -477,17 +477,17 @@ INSTANTIATE_TEST_SUITE_P(
                                           NodeIntraIdIs(IntraCfgId{4, 0}), 0,
                                           _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 0}),
-                                          NodeIntraIdIs(IntraCfgId{4, 0}), 4,
+                                          NodeIntraIdIs(IntraCfgId{4, 0}), 5,
                                           _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 0}),
                                           NodeIntraIdIs(IntraCfgId{5, 0}),
-                                          676, _),
+                                          649, _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{4, 0}),
                                           NodeIntraIdIs(IntraCfgId{5, 0}),
                                           175, _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{1, 0}),
                                           NodeIntraIdIs(IntraCfgId{3, 1}),
-                                          185, _),
+                                          186, _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 1}),
                                           NodeIntraIdIs(IntraCfgId{4, 0}),
                                           170, _),
@@ -508,7 +508,7 @@ INSTANTIATE_TEST_SUITE_P(
                                     NodeInterIdIs(
                                         InterCfgId{.function_index = 7,
                                                    .intra_cfg_id = {0, 0}}),
-                                    90, CFGEdgeKind::kCall),
+                                    91, CFGEdgeKind::kCall),
                                 IsCfgEdge(
                                     NodeInterIdIs(
                                         InterCfgId{.function_index = 6,
@@ -516,7 +516,7 @@ INSTANTIATE_TEST_SUITE_P(
                                     NodeInterIdIs(
                                         InterCfgId{.function_index = 8,
                                                    .intra_cfg_id = {0, 0}}),
-                                    85, CFGEdgeKind::kCall),
+                                    86, CFGEdgeKind::kCall),
                                 IsCfgEdge(
                                     NodeInterIdIs(
                                         InterCfgId{.function_index = 6,
@@ -578,11 +578,11 @@ INSTANTIATE_TEST_SUITE_P(
                                           NodeIntraIdIs(IntraCfgId{4, 0}), 0,
                                           _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 0}),
-                                          NodeIntraIdIs(IntraCfgId{4, 0}), 0,
+                                          NodeIntraIdIs(IntraCfgId{4, 0}), 1,
                                           _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 0}),
                                           NodeIntraIdIs(IntraCfgId{5, 0}),
-                                          690, _),
+                                          663, _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{4, 0}),
                                           NodeIntraIdIs(IntraCfgId{5, 0}), 0,
                                           _),
@@ -606,7 +606,7 @@ INSTANTIATE_TEST_SUITE_P(
                                     NodeInterIdIs(
                                         InterCfgId{.function_index = 7,
                                                    .intra_cfg_id = {0, 0}}),
-                                    0, CFGEdgeKind::kCall),
+                                    1, CFGEdgeKind::kCall),
                                 IsCfgEdge(
                                     NodeInterIdIs(
                                         InterCfgId{.function_index = 6,
@@ -614,7 +614,7 @@ INSTANTIATE_TEST_SUITE_P(
                                     NodeInterIdIs(
                                         InterCfgId{.function_index = 8,
                                                    .intra_cfg_id = {0, 0}}),
-                                    0, CFGEdgeKind::kCall),
+                                    1, CFGEdgeKind::kCall),
                                 IsCfgEdge(
                                     NodeInterIdIs(
                                         InterCfgId{.function_index = 6,
@@ -691,9 +691,9 @@ INSTANTIATE_TEST_SUITE_P(
                                           _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 0}),
                                           NodeIntraIdIs(IntraCfgId{4, 0}),
-                                          169, _),
+                                          170, _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 0}),
-                                          NodeIntraIdIs(IntraCfgId{5, 0}), 40,
+                                          NodeIntraIdIs(IntraCfgId{5, 0}), 13,
                                           _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{4, 0}),
                                           NodeIntraIdIs(IntraCfgId{5, 0}),
@@ -715,7 +715,7 @@ INSTANTIATE_TEST_SUITE_P(
                                     NodeInterIdIs(
                                         InterCfgId{.function_index = 7,
                                                    .intra_cfg_id = {0, 0}}),
-                                    100, CFGEdgeKind::kCall),
+                                    101, CFGEdgeKind::kCall),
                                 IsCfgEdge(
                                     NodeInterIdIs(
                                         InterCfgId{.function_index = 6,
@@ -723,7 +723,7 @@ INSTANTIATE_TEST_SUITE_P(
                                     NodeInterIdIs(
                                         InterCfgId{.function_index = 8,
                                                    .intra_cfg_id = {0, 0}}),
-                                    85, CFGEdgeKind::kCall),
+                                    86, CFGEdgeKind::kCall),
                                 IsCfgEdge(
                                     NodeInterIdIs(
                                         InterCfgId{.function_index = 6,
@@ -775,11 +775,11 @@ INSTANTIATE_TEST_SUITE_P(
                                           NodeIntraIdIs(IntraCfgId{4, 0}), 10,
                                           _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 0}),
-                                          NodeIntraIdIs(IntraCfgId{4, 0}), 0,
+                                          NodeIntraIdIs(IntraCfgId{4, 0}), 1,
                                           _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{3, 0}),
                                           NodeIntraIdIs(IntraCfgId{5, 0}),
-                                          690, _),
+                                          663, _),
                                 IsCfgEdge(NodeIntraIdIs(IntraCfgId{4, 0}),
                                           NodeIntraIdIs(IntraCfgId{5, 0}), 10,
                                           _),
