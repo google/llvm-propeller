@@ -87,7 +87,7 @@ message PropellerOptions {
   bool write_cfg_profile = 16 [default = true];
 }
 
-// Next Available: 14.
+// Next Available: 15.
 message PropellerCodeLayoutParameters {
   uint32 fallthrough_weight = 1 [default = 10];
 
@@ -122,6 +122,10 @@ message PropellerCodeLayoutParameters {
   // Whether to do inter-procedural reordering.
   bool inter_function_reordering = 12 [default = false];
 
-  // The weight to assign to branches that always fallthrough.
+  // The extra weight to assign to branches that always fallthrough.
   int32 always_fallthrough_branch_weight = 13 [default = 0];
+
+  // The extra weight to assign to direct branches that are always taken and are
+  // not fallthroughs.
+  int32 always_taken_nonfallthrough_branch_weight = 14 [default = 0];
 }

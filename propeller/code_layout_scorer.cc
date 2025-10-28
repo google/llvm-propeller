@@ -60,20 +60,29 @@ double PropellerCodeLayoutScorer::GetEdgeScore(const CFGEdge& edge,
     return edge.weight() * factor;
   }
 
+  double factor = 0;
   double absolute_src_sink_distance =
       static_cast<double>(std::abs(src_sink_distance));
   if (src_sink_distance > 0 &&
-      absolute_src_sink_distance < code_layout_params_.forward_jump_distance())
-    return edge.weight() * code_layout_params_.forward_jump_weight() *
-           (1.0 - absolute_src_sink_distance /
-                      code_layout_params_.forward_jump_distance());
+      absolute_src_sink_distance <
+          code_layout_params_.forward_jump_distance()) {
+    factor = code_layout_params_.forward_jump_weight() *
+             (1.0 - absolute_src_sink_distance /
+                        code_layout_params_.forward_jump_distance());
+  }
 
   if (src_sink_distance < 0 &&
-      absolute_src_sink_distance < code_layout_params_.backward_jump_distance())
-    return edge.weight() * code_layout_params_.backward_jump_weight() *
-           (1.0 - absolute_src_sink_distance /
-                      code_layout_params_.backward_jump_distance());
-  return 0;
+      absolute_src_sink_distance <
+          code_layout_params_.backward_jump_distance()) {
+    factor = code_layout_params_.backward_jump_weight() *
+             (1.0 - absolute_src_sink_distance /
+                        code_layout_params_.backward_jump_distance());
+  }
+
+  if (edge.IsAlwaysTaken() && !edge.IsIndirectBranch()) {
+    factor += code_layout_params_.always_taken_nonfallthrough_branch_weight();
+  }
+  return factor * edge.weight();
 }
 
 }  // namespace propeller
