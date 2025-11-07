@@ -29,7 +29,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "propeller/cfg.h"
-#include "propeller/function_chain_info.h"
+#include "propeller/function_layout_info.h"
 #include "propeller/path_node.h"
 #include "propeller/path_profile_options.pb.h"
 #include "propeller/program_cfg.h"
@@ -143,8 +143,8 @@ class CfgChangeBuilder {
 //      consecutively in the layout and there is `kBranchOrFallthrough` edge
 //      between the two blocks in the direction of the layout, and
 //   2. `cfg_change.intra_edge_reroutes` contains neither A nor B.
-std::vector<FunctionChainInfo::BbChain> GetInitialChains(
-    const ControlFlowGraph& cfg, const FunctionChainInfo& chain_info,
+std::vector<FunctionLayoutInfo::BbChain> GetInitialChains(
+    const ControlFlowGraph& cfg, const FunctionLayoutInfo& chain_info,
     const CfgChangeFromPathCloning& cfg_change);
 
 // Represents a potentially evaluated path cloning.
@@ -195,7 +195,7 @@ absl::StatusOr<EvaluatedPathCloning> EvaluateCloning(
     const CfgBuilder& cfg_builder, const PathCloning& path_cloning,
     const PropellerCodeLayoutParameters& code_layout_params,
     const PathProfileOptions& path_profile_options, double min_score,
-    const FunctionChainInfo& optimal_chain_info,
+    const FunctionLayoutInfo& optimal_chain_info,
     const FunctionPathProfile& function_path_profile
         ABSL_ATTRIBUTE_LIFETIME_BOUND);
 
@@ -224,7 +224,7 @@ class PathTreeCloneEvaluator {
   // to valid objects which will outlive the constructed object.
   PathTreeCloneEvaluator(
       const ControlFlowGraph* absl_nonnull cfg,
-      const FunctionChainInfo* absl_nonnull optimal_chain_info,
+      const FunctionLayoutInfo* absl_nonnull optimal_chain_info,
       const PathProfileOptions* absl_nonnull path_profile_options,
       const PropellerCodeLayoutParameters* absl_nonnull code_layout_params)
       : cfg_(*cfg),
@@ -264,7 +264,7 @@ class PathTreeCloneEvaluator {
   const ControlFlowGraph& cfg_;
   const PathProfileOptions& path_profile_options_;
   const PropellerCodeLayoutParameters& code_layout_params_;
-  const FunctionChainInfo& optimal_chain_info_;
+  const FunctionLayoutInfo& optimal_chain_info_;
 };
 }  // namespace propeller
 #endif  // PROPELLER_PATH_CLONE_EVALUATOR_H_

@@ -1,0 +1,10 @@
+0x17f0,0x1780
+0x1780,0x1805
+0x1871,0x17f0
+# The following two prefetch directives are in cold functions, but they should not be ignored.
+0x1730,0x17b0
+0x17b0,0x17f0
+# prefetch target does not map to a valid address. should be ignored.
+0x17f0,0x1980
+# prefetch site does not map to a valid address. should be ignored.
+0x1600,0x17f0

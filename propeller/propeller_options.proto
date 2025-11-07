@@ -23,6 +23,7 @@ enum ProfileType {
   PERF_LBR = 1;
   PERF_SPE = 2;
   FREQUENCIES_PROTO = 3;
+  PREFETCH_DIRECTIVES = 4;
 }
 
 // Message for specifying an input perf/proto/etc. profile for Propeller profile

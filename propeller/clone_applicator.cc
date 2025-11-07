@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -32,7 +33,7 @@
 #include "propeller/cfg_edge_kind.h"
 #include "propeller/cfg_node.h"
 #include "propeller/code_layout.h"
-#include "propeller/function_chain_info.h"
+#include "propeller/function_layout_info.h"
 #include "propeller/path_clone_evaluator.h"
 #include "propeller/path_node.h"
 #include "propeller/path_profile_options.pb.h"
@@ -255,14 +256,14 @@ CloneApplicatorStats ApplyClonings(
     CfgBuilder cfg_builder(cfg);
     auto compute_optimal_chain_info = [&]() {
       std::unique_ptr<ControlFlowGraph> clone_cfg = cfg_builder.Clone().Build();
-      std::vector<FunctionChainInfo> code_layout_result =
+      absl::btree_map<int, FunctionLayoutInfo> code_layout_result =
           CodeLayout(code_layout_params, {clone_cfg.get()},
                      /*initial_chains=*/{})
               .OrderAll();
       CHECK_EQ(code_layout_result.size(), 1);
-      return code_layout_result.front();
+      return code_layout_result.begin()->second;
     };
-    std::optional<propeller::FunctionChainInfo> optimal_chain_info;
+    std::optional<propeller::FunctionLayoutInfo> optimal_chain_info;
     auto& current_cfg_changes = cfg_changes_by_function_index[function_index];
 
     for (EvaluatedPathCloning& cloning : clonings) {

@@ -120,7 +120,6 @@ absl::StatusOr<std::unique_ptr<ProgramCfg>> ProgramCfgBuilder::Build(
   for (auto& [cfg_index, cfg] : cfgs_) {
     ControlFlowGraph::NodeFrequencyStats cfg_stats =
         cfg->GetNodeFrequencyStats();
-    if (cfg_stats.n_hot_blocks == 0) continue;
     stats_->cfg_stats.hot_basic_blocks += cfg_stats.n_hot_blocks;
     stats_->cfg_stats.hot_empty_basic_blocks += cfg_stats.n_hot_empty_blocks;
     if (cfg_stats.n_hot_landing_pads != 0)

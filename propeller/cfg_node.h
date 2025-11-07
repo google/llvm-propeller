@@ -21,6 +21,8 @@
 #include <vector>
 
 #include "absl/functional/function_ref.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "llvm/Object/ELFTypes.h"
 #include "propeller/cfg_edge.h"
 #include "propeller/cfg_edge_kind.h"
@@ -36,22 +38,20 @@ class CFGNode final {
  public:
   CFGNode(uint64_t addr, int bb_index, int bb_id, int size,
           const llvm::object::BBAddrMap::BBEntry::Metadata& metadata,
-          int function_index, int freq = 0, int clone_number = 0,
-          int node_index = -1)
+          int function_index, int clone_number = 0, int node_index = -1)
       : inter_cfg_id_({function_index, {bb_index, clone_number}}),
         bb_id_(bb_id),
         node_index_(clone_number == 0 ? bb_index : node_index),
         addr_(addr),
         size_(size),
-        metadata_(metadata),
-        freq_(freq) {}
+        metadata_(metadata) {}
 
   // Returns a clone of `*this` with the given assigned `clone_number`, but with
   // zero frequency and empty edges.
   std::unique_ptr<CFGNode> Clone(int clone_number, int node_index) const {
     return std::make_unique<CFGNode>(addr_, bb_index(), bb_id_, size_,
-                                     metadata_, function_index(), /*freq=*/0,
-                                     clone_number, node_index);
+                                     metadata_, function_index(), clone_number,
+                                     node_index);
   }
 
   // Returns a program-wide unique id for this node.
@@ -82,6 +82,11 @@ class CFGNode final {
   const std::vector<CFGEdge*>& intra_ins() const { return intra_ins_; }
   const std::vector<CFGEdge*>& inter_outs() const { return inter_outs_; }
   const std::vector<CFGEdge*>& inter_ins() const { return inter_ins_; }
+
+  bool has_edges() const {
+    return !intra_outs_.empty() || !intra_ins_.empty() ||
+           !inter_outs_.empty() || !inter_ins_.empty();
+  }
 
   void ForEachInEdgeRef(absl::FunctionRef<void(CFGEdge& edge)> func) const {
     for (CFGEdge* edge : intra_ins_) func(*edge);
@@ -125,7 +130,13 @@ class CFGNode final {
     return full_intra_cfg_id().profile_bb_id();
   }
 
-  void set_freq(int freq) { freq_ = freq; }
+  std::string GetExtendedDotFormatLabel() const {
+    return absl::StrJoin({absl::StrCat("id: ", GetDotFormatLabel()),
+                          absl::StrCat("index: ", intra_cfg_id().bb_index),
+                          absl::StrCat("freq: ", CalculateFrequency()),
+                          absl::StrCat("size: ", size_)},
+                         "\\n");
+  }
 
   InterCfgId inter_cfg_id_;
   // Fixed ID of the basic block, as defined by the compiler. Must be unique
@@ -136,7 +147,6 @@ class CFGNode final {
   const int addr_;
   int size_ = 0;
   const llvm::object::BBAddrMap::BBEntry::Metadata metadata_;
-  int freq_ = 0;
 
   std::vector<CFGEdge*> intra_outs_ = {};  // Intra function edges.
   std::vector<CFGEdge*> intra_ins_ = {};   // Intra function edges.

@@ -16,6 +16,7 @@
 
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -52,7 +53,8 @@ using ::propeller_file::GetBinaryProto;
 // Determines the type of the provided input profiles, returning an error if
 // profile types are heterogeneous. For backwards compatibility reasons, assumes
 // that unspecified profile types are PERF_LBR.
-absl::StatusOr<ProfileType> GetProfileType(const PropellerOptions& opts) {
+absl::StatusOr<std::optional<ProfileType>> GetBranchProfileType(
+    const PropellerOptions& opts) {
   if (opts.input_profiles().empty())
     return absl::InvalidArgumentError("no input profiles provided");
 
@@ -65,11 +67,18 @@ absl::StatusOr<ProfileType> GetProfileType(const PropellerOptions& opts) {
         return profile.type();
       });
 
-  if (profile_types.size() > 1) {
-    return absl::InvalidArgumentError("heterogeneous profile types");
+  if (profile_types.contains(ProfileType::PERF_LBR)) {
+    if (profile_types.contains(ProfileType::PERF_SPE))
+      return absl::InvalidArgumentError("heterogeneous profile types");
+    return ProfileType::PERF_LBR;
   }
 
-  return *profile_types.begin();
+  for (const auto& profile_type : profile_types) {
+    if (profile_type == ProfileType::PREFETCH_DIRECTIVES) continue;
+    return profile_type;
+  }
+
+  return std::nullopt;
 }
 
 // Creates a perf data provider for the perf files in `opts.input_profiles`.
@@ -77,8 +86,11 @@ absl::StatusOr<ProfileType> GetProfileType(const PropellerOptions& opts) {
 std::unique_ptr<GenericFilePerfDataProvider> CreatePerfDataProvider(
     const PropellerOptions& opts) {
   std::vector<std::string> profile_names;
-  absl::c_transform(opts.input_profiles(), std::back_inserter(profile_names),
-                    [](const InputProfile& profile) { return profile.name(); });
+  for (const InputProfile& profile : opts.input_profiles()) {
+    if (profile.type() == ProfileType::PREFETCH_DIRECTIVES) continue;
+    profile_names.push_back(profile.name());
+  }
+  if (profile_names.empty()) return nullptr;
 
   return std::make_unique<GenericFilePerfDataProvider>(
       std::move(profile_names));
@@ -114,6 +126,9 @@ absl::StatusOr<std::unique_ptr<BranchAggregator>> CreateBranchAggregator(
           std::make_unique<PerfBranchFrequenciesAggregator>(
               std::move(perf_data_provider)),
           opts, binary_content);
+    }
+    case ProfileType::PREFETCH_DIRECTIVES: {
+      return nullptr;
     }
     default: {
       return absl::InvalidArgumentError(
@@ -171,14 +186,19 @@ absl::Status GeneratePropellerProfiles(
 }  // namespace
 
 absl::Status GeneratePropellerProfiles(const PropellerOptions& opts) {
-  ASSIGN_OR_RETURN(ProfileType profile_type, GetProfileType(opts));
+  ASSIGN_OR_RETURN(std::optional<ProfileType> profile_type,
+                   GetBranchProfileType(opts));
   ASSIGN_OR_RETURN(std::unique_ptr<BinaryContent> binary_content,
                    GetBinaryContent(opts.binary_name()));
-  ASSIGN_OR_RETURN(std::unique_ptr<BranchAggregator> branch_aggregator,
-                   CreateBranchAggregator(profile_type, opts, *binary_content));
-  ASSIGN_OR_RETURN(
-      std::unique_ptr<PathProfileAggregator> path_profile_aggregator,
-      CreatePathProfileAggregator(profile_type, opts));
+  std::unique_ptr<BranchAggregator> branch_aggregator;
+  std::unique_ptr<PathProfileAggregator> path_profile_aggregator;
+  if (profile_type.has_value()) {
+    ASSIGN_OR_RETURN(
+        branch_aggregator,
+        CreateBranchAggregator(*profile_type, opts, *binary_content));
+    ASSIGN_OR_RETURN(path_profile_aggregator,
+                     CreatePathProfileAggregator(*profile_type, opts));
+  }
   return GeneratePropellerProfiles(opts, std::move(binary_content),
                                    std::move(branch_aggregator),
                                    std::move(path_profile_aggregator));
