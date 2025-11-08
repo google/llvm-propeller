@@ -35,8 +35,8 @@
 #include "propeller/cfg_node.h"
 #include "propeller/cfg_testutil.h"
 #include "propeller/code_layout.h"
-#include "propeller/function_chain_info.h"
-#include "propeller/function_chain_info_matchers.h"
+#include "propeller/function_layout_info.h"
+#include "propeller/function_layout_info_matchers.h"
 #include "propeller/mock_program_cfg_builder.h"
 #include "propeller/path_node.h"
 #include "propeller/path_profile_options.pb.h"
@@ -495,19 +495,19 @@ TEST(PathCloneEvaluator, GetsInitialChains) {
   ProgramPathProfile path_profile(GetDefaultPathProfileArg());
   PropellerCodeLayoutParameters code_layout_params;
   code_layout_params.set_call_chain_clustering(false);
-  FunctionChainInfo::BbChain one_chain(/*_layout_index=*/0);
+  FunctionLayoutInfo::BbChain one_chain(/*_layout_index=*/0);
   one_chain.bb_bundles.push_back(
       {.full_bb_ids = {{.intra_cfg_id = IntraCfgId{.bb_index = 0}},
                        {.intra_cfg_id = IntraCfgId{.bb_index = 2}},
                        {.intra_cfg_id = IntraCfgId{.bb_index = 5}}}});
-  FunctionChainInfo optimal_chain_info =
+  FunctionLayoutInfo optimal_chain_info =
       CodeLayout(code_layout_params, {&foo_cfg},
                  /*initial_chains=*/{{6, {std::move(one_chain)}}})
           .OrderAll()
-          .front();
+          .begin()
+          ->second;
   ASSERT_THAT(optimal_chain_info,
-              FunctionChainInfoIs(
-                  6,
+              FunctionLayoutInfoIs(
                   ElementsAre(BbChainIs(
                       _, ElementsAre(BbBundleIs(ElementsAre(
                                          BbIdIs(0), BbIdIs(2), BbIdIs(5))),
@@ -649,7 +649,8 @@ TEST(EvaluateOneCloning, RejectsNonProfitableCloning) {
                       CodeLayout(code_layout_params, {foo_cfg},
                                  /*initial_chains=*/{})
                           .OrderAll()
-                          .front(),
+                          .begin()
+                          ->second,
                       path_profile.path_profiles_by_function_index().at(6)),
       StatusIs(absl::StatusCode::kFailedPrecondition,
                "Cloning is not acceptable with score gain: -190.223 < -170"));

@@ -49,6 +49,7 @@ enum class ProfileType {
   kPerfLbr,
   kPerfSpe,
   kFrequenciesProto,
+  kPrefetchDirectives,
 };
 
 inline bool AbslParseFlag(absl::string_view text, ProfileType* out,
@@ -62,7 +63,7 @@ ABSL_FLAG(std::vector<std::string>, profile, {},
           "Comma-separated file paths of the input profile files.");
 ABSL_FLAG(ProfileType, profile_type, ProfileType::kPerfLbr,
           "Type of input profiles (possible values: \"PERF_LBR\", "
-          "\"PERF_SPE\", \"FREQUENCIES_PROTO\").");
+          "\"PERF_SPE\", \"FREQUENCIES_PROTO\", \"PREFETCH_DIRECTIVES\").");
 ABSL_FLAG(std::string, cc_profile, "", "Output cc profile");
 ABSL_FLAG(std::string, ld_profile, "", "Output ld profile");
 ABSL_FLAG(propeller::TextProtoFlag<propeller::PropellerOptions>,
@@ -80,6 +81,7 @@ inline bool AbslParseFlag(absl::string_view text, ProfileType* out,
       {"PERF_LBR", ProfileType::kPerfLbr},
       {"PERF_SPE", ProfileType::kPerfSpe},
       {"FREQUENCIES_PROTO", ProfileType::kFrequenciesProto},
+      {"PREFETCH_DIRECTIVES", ProfileType::kPrefetchDirectives},
   };
 
   auto found = kFlagOptions.find(text);
@@ -99,6 +101,8 @@ inline std::string AbslUnparseFlag(ProfileType type) {
       return "PERF_SPE";
     case ProfileType::kFrequenciesProto:
       return "FREQUENCIES_PROTO";
+    case ProfileType::kPrefetchDirectives:
+      return "PREFETCH_DIRECTIVES";
   }
 }
 
@@ -110,6 +114,8 @@ propeller::ProfileType ToProtoProfileType(ProfileType type) {
       return propeller::ProfileType::PERF_SPE;
     case ProfileType::kFrequenciesProto:
       return propeller::ProfileType::FREQUENCIES_PROTO;
+    case ProfileType::kPrefetchDirectives:
+      return propeller::ProfileType::PREFETCH_DIRECTIVES;
   }
 }
 }  // namespace

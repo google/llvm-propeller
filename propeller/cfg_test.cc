@@ -109,15 +109,18 @@ TEST(LlvmPropellerCfg, GetDotFormat) {
   cfgs.at(0)->WriteDotFormat(
       dot_format_os,
       // Assume the 0,1,3,2 layout.
-      {{{0, 0}, 1}, {{1, 0}, 2}, {{2, 0}, 4}, {{3, 0}, 3}});
+      {{{0, 0}, 1}, {{1, 0}, 2}, {{2, 0}, 4}, {{3, 0}, 3}}, {});
   EXPECT_EQ(dot_format_os.str(),
             "digraph {\n"
             "label=\"foo#0\"\n"
             "forcelabels=true;\n"
-            "0 [xlabel=\"0#16#0\", color = \"black\" ];\n"
-            "1 [xlabel=\"0#7#1\", color = \"black\" ];\n"
-            "2 [xlabel=\"0#10#2\", color = \"black\" ];\n"
-            "3 [xlabel=\"0#4#3\", color = \"black\" ];\n"
+            "rankdir=\"LR\";\n"
+            "0 [label=\"id: 0\\nindex: 0\\nfreq: 10\\nsize: 16\", color = "
+            "\"black\" ];\n"
+            "1 [label=\"id: 1\\nindex: 1\\nfreq: 110\\nsize: 7\", color = "
+            "\"black\" ];\n"
+            "3 [label=\"id: 3\\nindex: 3\\nfreq: 100\\nsize: 4\", color = "
+            "\"black\" ];\n"
             "0 -> 1[ label=\"B#10\", color =\"red\"];\n"
             "1 -> 3[ label=\"B#95\", color =\"red\"];\n"
             "3 -> 1[ label=\"B#100\", color =\"black\"];\n"

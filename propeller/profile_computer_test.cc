@@ -55,6 +55,7 @@ using ::testing::AllOf;
 using ::testing::Contains;
 using ::testing::ElementsAre;
 using ::testing::Eq;
+using ::testing::ExplainMatchResult;
 using ::testing::Gt;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
@@ -87,6 +88,11 @@ MATCHER_P7(CfgNodeFieldsAre, function_index, bb_index, clone_number, bb_id,
          arg.clone_number() == clone_number && arg.addr() == address &&
          arg.bb_id() == bb_id && arg.size() == size &&
          arg.CalculateFrequency() == freq;
+}
+
+MATCHER_P(SectionProfileInfoSizeIs, size, "") {
+  return ExplainMatchResult(SizeIs(size), arg.profile_infos_by_function_index,
+                            result_listener);
 }
 
 static std::string GetPropellerTestDataFilePath(absl::string_view filename) {

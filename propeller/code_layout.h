@@ -29,7 +29,7 @@
 #include "propeller/cfg_node.h"
 #include "propeller/chain_cluster_builder.h"
 #include "propeller/code_layout_scorer.h"
-#include "propeller/function_chain_info.h"
+#include "propeller/function_layout_info.h"
 #include "propeller/program_cfg.h"
 #include "propeller/propeller_options.pb.h"
 #include "propeller/propeller_statistics.h"
@@ -38,8 +38,8 @@ namespace propeller {
 
 // Runs `CodeLayout` on every section in `program_cfg` and returns
 // the code layout results as a map keyed by section names, and valued by the
-// `FunctionChainInfo` of all functions in each section.
-absl::btree_map<llvm::StringRef, std::vector<FunctionChainInfo>>
+// `FunctionProfileInfo` of all functions in each section.
+absl::btree_map<llvm::StringRef, absl::btree_map<int, FunctionLayoutInfo>>
 GenerateLayoutBySection(const ProgramCfg& program_cfg,
                         const PropellerCodeLayoutParameters& code_layout_params,
                         PropellerStats::CodeLayoutStats& code_layout_stats);
@@ -50,7 +50,7 @@ class CodeLayout {
   // chains initially to make chain merging faster.
   CodeLayout(const PropellerCodeLayoutParameters& code_layout_params,
              const std::vector<const ControlFlowGraph*>& cfgs,
-             absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>
+             absl::flat_hash_map<int, std::vector<FunctionLayoutInfo::BbChain>>
                  initial_chains = {})
       : code_layout_scorer_(code_layout_params),
         cfgs_(cfgs),
@@ -58,7 +58,7 @@ class CodeLayout {
 
   // This performs code layout on all hot cfgs in the prop_prof_writer instance
   // and returns the global order information for all function.
-  std::vector<FunctionChainInfo> OrderAll();
+  absl::btree_map<int, FunctionLayoutInfo> OrderAll();
 
   PropellerStats::CodeLayoutStats stats() const { return stats_; }
 
@@ -69,7 +69,7 @@ class CodeLayout {
   // Initial node chains, specified as a map from every function index to the
   // vector of initial node chains for the corresponding CFG. Each node chain is
   // specified by a vector of bb_indexes of its nodes.
-  const absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>
+  const absl::flat_hash_map<int, std::vector<FunctionLayoutInfo::BbChain>>
       initial_chains_;
   PropellerStats::CodeLayoutStats stats_;
 

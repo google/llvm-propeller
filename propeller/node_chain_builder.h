@@ -30,7 +30,7 @@
 #include "propeller/cfg_id.h"
 #include "propeller/cfg_node.h"
 #include "propeller/code_layout_scorer.h"
-#include "propeller/function_chain_info.h"
+#include "propeller/function_layout_info.h"
 #include "propeller/node_chain.h"
 #include "propeller/node_chain_assembly.h"
 #include "propeller/propeller_statistics.h"
@@ -159,7 +159,7 @@ class NodeChainBuilder {
   static NodeChainBuilder CreateNodeChainBuilder(
       const PropellerCodeLayoutScorer& scorer,
       const std::vector<const ControlFlowGraph*>& cfgs,
-      const absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>&
+      const absl::flat_hash_map<int, std::vector<FunctionLayoutInfo::BbChain>>&
           initial_chains,
       PropellerStats::CodeLayoutStats& stats);
 
@@ -220,7 +220,7 @@ class NodeChainBuilder {
   NodeChainBuilder(
       const PropellerCodeLayoutScorer& scorer,
       const std::vector<const ControlFlowGraph*>& cfgs,
-      absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>
+      absl::flat_hash_map<int, std::vector<FunctionLayoutInfo::BbChain>>
           initial_chains,
       PropellerStats::CodeLayoutStats& stats,
       std::unique_ptr<NodeChainAssemblyQueue> node_chain_assemblies)
@@ -280,7 +280,7 @@ class NodeChainBuilder {
   // Initial node chains, specified as a map from every function index to the
   // vector of initial node chains for the corresponding CFG. Each node chain is
   // specified by a vector of intra_cfg_ids of its nodes.
-  const absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>
+  const absl::flat_hash_map<int, std::vector<FunctionLayoutInfo::BbChain>>
       initial_chains_;
 
   PropellerStats::CodeLayoutStats& stats_;

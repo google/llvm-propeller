@@ -45,6 +45,8 @@ absl::StatusOr<LbrAggregation> PerfLbrAggregator::AggregateLbrData(
   PropellerStats::ProfileStats& profile_stats = stats.profile_stats;
   LbrAggregation lbr_aggregation;
 
+  if (perf_data_provider_ == nullptr) return lbr_aggregation;
+
   while (true) {
     ASSIGN_OR_RETURN(std::optional<PerfDataProvider::BufferHandle> perf_data,
                      perf_data_provider_->GetNext());

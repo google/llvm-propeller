@@ -18,6 +18,7 @@
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
@@ -113,6 +114,7 @@ class PropellerProfileComputer {
   const BinaryContent* absl_nonnull binary_content_;
   PropellerStats stats_;
   std::unique_ptr<BinaryAddressMapper> binary_address_mapper_;
+  std::vector<CodePrefetchDirective> code_prefetch_directives_;
   std::unique_ptr<ProgramCfg> program_cfg_;
   std::optional<ProgramPathProfile> program_path_profile_;
 };

@@ -41,6 +41,11 @@
 
 namespace propeller {
 
+struct CodePrefetchDirective {
+  uint64_t prefetch_site;
+  uint64_t prefetch_target;
+};
+
 enum class BranchDirection { kFrom, kTo };
 
 // Represents either a branch from `from_bb` to `to_bb`, or a callsite calling
