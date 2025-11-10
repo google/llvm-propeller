@@ -94,8 +94,9 @@ void ControlFlowGraph::WriteDotFormat(
      << "\"\n";
   os << "forcelabels=true;\n";
   for (const auto& node : nodes_) {
-    os << node->GetDotFormatLabel() << " [xlabel=\"" << node->freq_ << "#"
-       << node->size_ << "#" << node->bb_index() << "\", color = \""
+    os << node->GetDotFormatLabel() << " [xlabel=\""
+       << node->CalculateFrequency() << "#" << node->size_ << "#"
+       << node->bb_index() << "\", color = \""
        << (node->clone_number() ? "red" : "black") << "\" ];\n";
   }
   for (const auto& edge : intra_edges_) {
