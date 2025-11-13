@@ -87,7 +87,7 @@ target_link_libraries(generate_propeller_profiles
 add_library(propeller_test_lib OBJECT
   # keep-sorted start
   cfg_testutil.cc
-  function_chain_info_matchers.cc
+  function_layout_info_matchers.cc
   mock_program_cfg_builder.cc
   multi_cfg_test_case.cc
   # keep-sorted end

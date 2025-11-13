@@ -29,7 +29,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "propeller/cfg.h"
-#include "propeller/function_chain_info.h"
+#include "propeller/function_layout_info.h"
 #include "propeller/path_node.h"
 #include "propeller/path_profile_options.pb.h"
 #include "propeller/program_cfg.h"
@@ -137,14 +137,14 @@ class CfgChangeBuilder {
 };
 
 // Extracts and returns a vector of initial chains for `cfg` for applying
-// `cfg_change` based on layout information in `chain_info`. Every two adjacent
+// `cfg_change` based on layout information in `layout_info`. Every two adjacent
 // blocks A and B are placed consecutively in the same chain/bundle iff
-//   1. they form a fallthrough in `chain_info`. Which means they are placed
+//   1. they form a fallthrough in `layout_info`. Which means they are placed
 //      consecutively in the layout and there is `kBranchOrFallthrough` edge
 //      between the two blocks in the direction of the layout, and
 //   2. `cfg_change.intra_edge_reroutes` contains neither A nor B.
-std::vector<FunctionChainInfo::BbChain> GetInitialChains(
-    const ControlFlowGraph& cfg, const FunctionChainInfo& chain_info,
+std::vector<FunctionLayoutInfo::BbChain> GetInitialChains(
+    const ControlFlowGraph& cfg, const FunctionLayoutInfo& layout_info,
     const CfgChangeFromPathCloning& cfg_change);
 
 // Represents a potentially evaluated path cloning.
@@ -195,7 +195,7 @@ absl::StatusOr<EvaluatedPathCloning> EvaluateCloning(
     const CfgBuilder& cfg_builder, const PathCloning& path_cloning,
     const PropellerCodeLayoutParameters& code_layout_params,
     const PathProfileOptions& path_profile_options, double min_score,
-    const FunctionChainInfo& optimal_chain_info,
+    const FunctionLayoutInfo& optimal_layout_info,
     const FunctionPathProfile& function_path_profile
         ABSL_ATTRIBUTE_LIFETIME_BOUND);
 
@@ -213,7 +213,7 @@ absl::flat_hash_map<int, std::vector<EvaluatedPathCloning>> EvaluateAllClonings(
 // Example usage:
 //   std::vector<PathCloning> clonings;
 //   PathTreeCloneEvaluator(cfg,
-//                          optimal_chain_info,
+//                          optimal_layout_info,
 //                          path_profile_options,
 //                          code_layout_params).EvaluateCloningsForSubtree(
 //                                                path_tree,
@@ -224,13 +224,13 @@ class PathTreeCloneEvaluator {
   // to valid objects which will outlive the constructed object.
   PathTreeCloneEvaluator(
       const ControlFlowGraph* absl_nonnull cfg,
-      const FunctionChainInfo* absl_nonnull optimal_chain_info,
+      const FunctionLayoutInfo* absl_nonnull optimal_layout_info,
       const PathProfileOptions* absl_nonnull path_profile_options,
       const PropellerCodeLayoutParameters* absl_nonnull code_layout_params)
       : cfg_(*cfg),
         path_profile_options_(*path_profile_options),
         code_layout_params_(*code_layout_params),
-        optimal_chain_info_(*optimal_chain_info) {}
+        optimal_layout_info_(*optimal_layout_info) {}
 
   // Evaluates all clonings in `path_tree` and inserts the scored clonings in
   // `clonings`. `path_length` must be provided as the length of the path
@@ -264,7 +264,7 @@ class PathTreeCloneEvaluator {
   const ControlFlowGraph& cfg_;
   const PathProfileOptions& path_profile_options_;
   const PropellerCodeLayoutParameters& code_layout_params_;
-  const FunctionChainInfo& optimal_chain_info_;
+  const FunctionLayoutInfo& optimal_layout_info_;
 };
 }  // namespace propeller
 #endif  // PROPELLER_PATH_CLONE_EVALUATOR_H_

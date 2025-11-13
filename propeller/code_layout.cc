@@ -30,7 +30,7 @@
 #include "propeller/cfg.h"
 #include "propeller/cfg_node.h"
 #include "propeller/chain_cluster_builder.h"
-#include "propeller/function_chain_info.h"
+#include "propeller/function_layout_info.h"
 #include "propeller/node_chain.h"
 #include "propeller/node_chain_builder.h"
 #include "propeller/program_cfg.h"
@@ -39,20 +39,21 @@
 
 namespace propeller {
 
-absl::btree_map<llvm::StringRef, std::vector<FunctionChainInfo>>
-GenerateLayoutBySection(const ProgramCfg& program_cfg,
-                        const PropellerCodeLayoutParameters& code_layout_params,
-                        PropellerStats::CodeLayoutStats& code_layout_stats) {
-  absl::btree_map<llvm::StringRef, std::vector<FunctionChainInfo>>
-      chain_info_by_section_name;
+absl::btree_map<llvm::StringRef, SectionLayoutInfo> GenerateLayoutBySection(
+    const ProgramCfg& program_cfg,
+    const PropellerCodeLayoutParameters& code_layout_params,
+    PropellerStats::CodeLayoutStats& code_layout_stats) {
+  absl::btree_map<llvm::StringRef, SectionLayoutInfo>
+      layout_info_by_section_name;
   absl::flat_hash_map<llvm::StringRef, std::vector<const ControlFlowGraph*>>
       cfgs_by_section_name = program_cfg.GetCfgsBySectionName();
   for (const auto& [section_name, cfgs] : cfgs_by_section_name) {
     CodeLayout code_layout(code_layout_params, cfgs);
-    chain_info_by_section_name.emplace(section_name, code_layout.OrderAll());
+    layout_info_by_section_name.emplace(section_name,
+                                        code_layout.GenerateLayout());
     code_layout_stats += code_layout.stats();
   }
-  return chain_info_by_section_name;
+  return layout_info_by_section_name;
 }
 
 // Returns the intra-procedural ext-tsp scores for the given CFGs given a
@@ -112,7 +113,7 @@ absl::flat_hash_map<int, CFGScore> CodeLayout::ComputeOptLayoutScores(
   });
 }
 
-std::vector<FunctionChainInfo> CodeLayout::OrderAll() {
+SectionLayoutInfo CodeLayout::GenerateLayout() {
   // Build optimal node chains for each CFG.
   std::vector<std::unique_ptr<const NodeChain>> built_chains;
   if (code_layout_scorer_.code_layout_params().inter_function_reordering()) {
@@ -142,8 +143,9 @@ std::vector<FunctionChainInfo> CodeLayout::OrderAll() {
   absl::flat_hash_map<int, CFGScore> opt_score_map =
       ComputeOptLayoutScores(clusters);
 
-  // Mapping from the function ordinal to the layout cluster info.
-  absl::flat_hash_map<int, FunctionChainInfo> function_chain_info_map;
+  SectionLayoutInfo section_layout_info;
+  absl::btree_map<int, FunctionLayoutInfo>& function_layout_info_map =
+      section_layout_info.layouts_by_function_index;
 
   int function_index = -1;
   unsigned layout_index = 0;
@@ -154,7 +156,7 @@ std::vector<FunctionChainInfo> CodeLayout::OrderAll() {
   // chains of bar.
   unsigned cold_chain_layout_index = 0;
 
-  auto func_chain_info_it = function_chain_info_map.end();
+  auto func_layout_info_it = function_layout_info_map.end();
 
   // Iterate over all CFG nodes in order and add them to the chain layout
   // information.
@@ -168,43 +170,41 @@ std::vector<FunctionChainInfo> CodeLayout::OrderAll() {
             // or when an entry basic block is reached.
             function_index = node.function_index();
             bool inserted = false;
-            std::tie(func_chain_info_it, inserted) =
-                function_chain_info_map.insert(
-                    {function_index,
-                     {.function_index = function_index,
-                      // We populate the clusters vector later.
-                      .bb_chains = {},
-                      .original_score = orig_score_map.at(function_index),
-                      .optimized_score = opt_score_map.at(function_index),
-                      .cold_chain_layout_index = cold_chain_layout_index}});
+            std::tie(func_layout_info_it, inserted) =
+                function_layout_info_map.emplace(
+                    function_index,
+                    FunctionLayoutInfo{
+                        // We populate the clusters vector later.
+                        .bb_chains = {},
+                        .original_score = orig_score_map.at(function_index),
+                        .optimized_score = opt_score_map.at(function_index),
+                        .cold_chain_layout_index = cold_chain_layout_index});
             if (inserted) ++cold_chain_layout_index;
             // Start a new chain and increment the global layout index.
-            func_chain_info_it->second.bb_chains.emplace_back(layout_index++);
+            func_layout_info_it->second.bb_chains.emplace_back(layout_index++);
           }
           // Start a new BB bundle if this either this is the first node in the
           // bundle, or if we have created a new chain.
           if (i == 0 ||
-              func_chain_info_it->second.bb_chains.back().bb_bundles.empty()) {
-            func_chain_info_it->second.bb_chains.back()
+              func_layout_info_it->second.bb_chains.back().bb_bundles.empty()) {
+            func_layout_info_it->second.bb_chains.back()
                 .bb_bundles.emplace_back();
           }
-          func_chain_info_it->second.bb_chains.back()
+          func_layout_info_it->second.bb_chains.back()
               .bb_bundles.back()
               .full_bb_ids.push_back(node.full_intra_cfg_id());
         }
       }
     }
   }
-  std::vector<FunctionChainInfo> all_function_chain_info;
-  all_function_chain_info.reserve(function_chain_info_map.size());
-  for (auto& [unused, func_chain_info] : function_chain_info_map) {
-    stats_.original_intra_score += func_chain_info.original_score.intra_score;
-    stats_.optimized_intra_score += func_chain_info.optimized_score.intra_score;
+  for (auto& [unused, func_layout_info] : function_layout_info_map) {
+    stats_.original_intra_score += func_layout_info.original_score.intra_score;
+    stats_.optimized_intra_score +=
+        func_layout_info.optimized_score.intra_score;
     stats_.original_inter_score +=
-        func_chain_info.original_score.inter_out_score;
+        func_layout_info.original_score.inter_out_score;
     stats_.optimized_inter_score +=
-        func_chain_info.optimized_score.inter_out_score;
-    all_function_chain_info.push_back(std::move(func_chain_info));
+        func_layout_info.optimized_score.inter_out_score;
   }
 
   // For each function chain info, sort the BB chains in increasing order of
@@ -212,20 +212,14 @@ std::vector<FunctionChainInfo> CodeLayout::OrderAll() {
   // the basic block sections list file which is independent from the global
   // chain ordering.
   // TODO(rahmanl): Test the chain order once we have interproc-reordering.
-  for (auto& func_chain_info : all_function_chain_info) {
-    absl::c_sort(func_chain_info.bb_chains,
-                 [](const FunctionChainInfo::BbChain& a,
-                    const FunctionChainInfo::BbChain& b) {
+  for (auto& [unused, func_layout_info] : function_layout_info_map) {
+    absl::c_sort(func_layout_info.bb_chains,
+                 [](const FunctionLayoutInfo::BbChain& a,
+                    const FunctionLayoutInfo::BbChain& b) {
                    return a.GetFirstBb().bb_id < b.GetFirstBb().bb_id;
                  });
   }
-  // For determinism, order the function cluster info elements in increasing
-  // order of their function index (consistent with the original function
-  // ordering).
-  absl::c_sort(all_function_chain_info,
-               [](const FunctionChainInfo& a, const FunctionChainInfo& b) {
-                 return a.function_index < b.function_index;
-               });
-  return all_function_chain_info;
+
+  return section_layout_info;
 }
 }  // namespace propeller

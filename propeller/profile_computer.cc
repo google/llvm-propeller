@@ -42,7 +42,7 @@
 #include "propeller/clone_applicator.h"
 #include "propeller/code_layout.h"
 #include "propeller/file_perf_data_provider.h"
-#include "propeller/function_chain_info.h"
+#include "propeller/function_layout_info.h"
 #include "propeller/lbr_branch_aggregator.h"
 #include "propeller/path_node.h"
 #include "propeller/path_profile_aggregator.h"
@@ -91,16 +91,28 @@ absl::StatusOr<PropellerProfile> PropellerProfileComputer::ComputeProfile() && {
         *program_path_profile_, std::move(program_cfg_), stats_.cloning_stats);
   }
 
-  absl::btree_map<llvm::StringRef, std::vector<FunctionChainInfo>>
-      chain_info_by_section_name =
+  absl::btree_map<llvm::StringRef, SectionLayoutInfo>
+      layout_info_by_section_name =
           GenerateLayoutBySection(*program_cfg_, options_.code_layout_params(),
                                   stats_.code_layout_stats);
 
-  return PropellerProfile({.program_cfg = std::move(program_cfg_),
-                           .functions_chain_info_by_section_name =
-                               std::move(chain_info_by_section_name),
-                           .stats = std::move(stats_),
-                           .build_id = binary_content_->build_id});
+  absl::btree_map<llvm::StringRef, SectionProfileInfo> section_profile_infos;
+
+  for (auto& [section_name, section_layout_info] :
+       layout_info_by_section_name) {
+    for (auto& [function_index, layout_info] :
+         section_layout_info.layouts_by_function_index) {
+      section_profile_infos[section_name]
+          .profile_infos_by_function_index[function_index]
+          .layout_info = std::move(layout_info);
+    }
+  }
+
+  return PropellerProfile(
+      {.program_cfg = std::move(program_cfg_),
+       .profile_infos_by_section_name = std::move(section_profile_infos),
+       .stats = std::move(stats_),
+       .build_id = binary_content_->build_id});
 }
 
 absl::StatusOr<std::unique_ptr<PropellerProfileComputer>>

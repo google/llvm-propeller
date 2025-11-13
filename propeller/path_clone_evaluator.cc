@@ -34,7 +34,7 @@
 #include "propeller/cfg_id.h"
 #include "propeller/cfg_node.h"
 #include "propeller/code_layout.h"
-#include "propeller/function_chain_info.h"
+#include "propeller/function_layout_info.h"
 #include "propeller/path_node.h"
 #include "propeller/path_profile_options.pb.h"
 #include "propeller/program_cfg.h"
@@ -249,12 +249,10 @@ absl::StatusOr<EvaluatedPathCloning> EvaluateCloning(
     const CfgBuilder& cfg_builder, const PathCloning& path_cloning,
     const PropellerCodeLayoutParameters& code_layout_params,
     const PathProfileOptions& path_profile_options, double min_score,
-    const FunctionChainInfo& optimal_chain_info,
+    const FunctionLayoutInfo& optimal_layout_info,
     const FunctionPathProfile& function_path_profile) {
   CHECK(!code_layout_params.call_chain_clustering());
   CHECK(!code_layout_params.inter_function_reordering());
-  CHECK_EQ(optimal_chain_info.function_index,
-           cfg_builder.cfg().function_index());
   ASSIGN_OR_RETURN(CfgChangeFromPathCloning new_cfg_change,
                    CfgChangeBuilder(path_cloning, cfg_builder.conflict_edges(),
                                     function_path_profile)
@@ -269,28 +267,30 @@ absl::StatusOr<EvaluatedPathCloning> EvaluateCloning(
 
   std::unique_ptr<ControlFlowGraph> cfg_with_paths_dropped =
       std::move(cfg_builder_for_dropping_paths_with_missing_pred).Build();
-  FunctionChainInfo paths_dropped_chain_info =
+  FunctionLayoutInfo paths_dropped_layout_info =
       CodeLayout(code_layout_params, {cfg_with_paths_dropped.get()},
                  {{cfg_builder.cfg().function_index(),
-                   GetInitialChains(*cfg_with_paths_dropped, optimal_chain_info,
-                                    new_cfg_change)}})
-          .OrderAll()
-          .front();
+                   GetInitialChains(*cfg_with_paths_dropped,
+                                    optimal_layout_info, new_cfg_change)}})
+          .GenerateLayout()
+          .layouts_by_function_index.begin()
+          ->second;
 
   CfgBuilder cfg_builder_for_cloning = cfg_builder.Clone();
   cfg_builder_for_cloning.AddCfgChange(new_cfg_change);
   std::unique_ptr<ControlFlowGraph> cfg_with_cloning =
       std::move(cfg_builder_for_cloning).Build();
-  FunctionChainInfo clone_chain_info =
+  FunctionLayoutInfo clone_layout_info =
       CodeLayout(code_layout_params, {cfg_with_cloning.get()},
                  {{cfg_builder.cfg().function_index(),
-                   GetInitialChains(*cfg_with_cloning, optimal_chain_info,
+                   GetInitialChains(*cfg_with_cloning, optimal_layout_info,
                                     new_cfg_change)}})
-          .OrderAll()
-          .front();
+          .GenerateLayout()
+          .layouts_by_function_index.begin()
+          ->second;
   double score_gain =
-      clone_chain_info.optimized_score.intra_score -
-      paths_dropped_chain_info.optimized_score.intra_score -
+      clone_layout_info.optimized_score.intra_score -
+      paths_dropped_layout_info.optimized_score.intra_score -
       GetClonePenalty(cfg_builder.cfg(), path_profile_options, path_cloning);
   if (score_gain < min_score) {
     return absl::FailedPreconditionError(
@@ -378,7 +378,7 @@ void PathTreeCloneEvaluator::EvaluateCloningsForPath(
                            .path_pred_bb_index = pred_bb_index};
     absl::StatusOr<EvaluatedPathCloning> evaluated_cloning = EvaluateCloning(
         CfgBuilder(&cfg_), cloning, code_layout_params_, path_profile_options_,
-        path_profile_options_.min_initial_cloning_score(), optimal_chain_info_,
+        path_profile_options_.min_initial_cloning_score(), optimal_layout_info_,
         function_path_profile);
     if (!evaluated_cloning.ok()) continue;
     clonings.push_back(std::move(*std::move(evaluated_cloning)));
@@ -399,15 +399,16 @@ absl::flat_hash_map<int, std::vector<EvaluatedPathCloning>> EvaluateAllClonings(
        program_path_profile->path_profiles_by_function_index()) {
     const ControlFlowGraph* cfg = program_cfg->GetCfgByIndex(function_index);
     CHECK_NE(cfg, nullptr);
-    FunctionChainInfo fast_response_original_optimal_chain_info =
+    FunctionLayoutInfo fast_response_original_optimal_layout_info =
         CodeLayout(code_layout_params, {cfg},
                    /*initial_chains=*/{})
-            .OrderAll()
-            .front();
+            .GenerateLayout()
+            .layouts_by_function_index.begin()
+            ->second;
     auto& clonings = cloning_scores_by_function_index[function_index];
     for (const auto& [root_bb_index, path_tree] :
          function_path_profile.path_trees_by_root_bb_index()) {
-      PathTreeCloneEvaluator(cfg, &fast_response_original_optimal_chain_info,
+      PathTreeCloneEvaluator(cfg, &fast_response_original_optimal_layout_info,
                              &path_profile_options, &code_layout_params)
           .EvaluateCloningsForSubtree(*path_tree, /*path_length=*/1, {},
                                       clonings, function_path_profile);
@@ -416,18 +417,17 @@ absl::flat_hash_map<int, std::vector<EvaluatedPathCloning>> EvaluateAllClonings(
   return cloning_scores_by_function_index;
 }
 
-std::vector<FunctionChainInfo::BbChain> GetInitialChains(
-    const ControlFlowGraph& cfg, const FunctionChainInfo& chain_info,
+std::vector<FunctionLayoutInfo::BbChain> GetInitialChains(
+    const ControlFlowGraph& cfg, const FunctionLayoutInfo& layout_info,
     const CfgChangeFromPathCloning& cfg_change) {
-  CHECK_EQ(cfg.function_index(), chain_info.function_index);
   absl::flat_hash_set<int> bb_indices;
   for (const auto& intra_edge_reroute : cfg_change.intra_edge_reroutes) {
     bb_indices.insert(intra_edge_reroute.src_bb_index);
     bb_indices.insert(intra_edge_reroute.sink_bb_index);
   }
-  std::vector<FunctionChainInfo::BbChain> all_chains;
-  for (const FunctionChainInfo::BbChain& bb_chain : chain_info.bb_chains) {
-    FunctionChainInfo::BbChain new_bb_chain(bb_chain.layout_index);
+  std::vector<FunctionLayoutInfo::BbChain> all_chains;
+  for (const FunctionLayoutInfo::BbChain& bb_chain : layout_info.bb_chains) {
+    FunctionLayoutInfo::BbChain new_bb_chain(bb_chain.layout_index);
     for (const auto& bundle : bb_chain.bb_bundles) {
       new_bb_chain.bb_bundles.emplace_back();
       for (const FullIntraCfgId& full_bb_id : bundle.full_bb_ids) {
@@ -435,7 +435,7 @@ std::vector<FunctionChainInfo::BbChain> GetInitialChains(
         // Commit the current chain and skip this block if it's in the path.
         if (bb_indices.contains(full_bb_id.intra_cfg_id.bb_index)) {
           all_chains.push_back(std::move(new_bb_chain));
-          new_bb_chain = FunctionChainInfo::BbChain(bb_chain.layout_index);
+          new_bb_chain = FunctionLayoutInfo::BbChain(bb_chain.layout_index);
           new_bb_chain.bb_bundles.emplace_back();
           continue;
         }
@@ -452,7 +452,7 @@ std::vector<FunctionChainInfo::BbChain> GetInitialChains(
                  .HasEdgeTo(cfg.GetNodeById(full_bb_id.intra_cfg_id),
                             CFGEdgeKind::kBranchOrFallthough)) {
           all_chains.push_back(std::move(new_bb_chain));
-          new_bb_chain = FunctionChainInfo::BbChain(bb_chain.layout_index);
+          new_bb_chain = FunctionLayoutInfo::BbChain(bb_chain.layout_index);
           new_bb_chain.bb_bundles.emplace_back();
           new_bb_chain.bb_bundles.back().full_bb_ids.push_back(full_bb_id);
           continue;
@@ -464,11 +464,11 @@ std::vector<FunctionChainInfo::BbChain> GetInitialChains(
   }
   all_chains.erase(
       std::remove_if(all_chains.begin(), all_chains.end(),
-                     [](FunctionChainInfo::BbChain& chain) {
+                     [](FunctionLayoutInfo::BbChain& chain) {
                        chain.bb_bundles.erase(
                            std::remove_if(
                                chain.bb_bundles.begin(), chain.bb_bundles.end(),
-                               [](const FunctionChainInfo::BbBundle& bundle) {
+                               [](const FunctionLayoutInfo::BbBundle& bundle) {
                                  return bundle.full_bb_ids.empty();
                                }),
                            chain.bb_bundles.end());

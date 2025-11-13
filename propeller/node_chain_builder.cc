@@ -33,7 +33,7 @@
 #include "propeller/cfg_node.h"
 #include "propeller/chain_merge_order.h"
 #include "propeller/code_layout_scorer.h"
-#include "propeller/function_chain_info.h"
+#include "propeller/function_layout_info.h"
 #include "propeller/node_chain.h"
 #include "propeller/node_chain_assembly.h"
 #include "propeller/propeller_statistics.h"
@@ -53,12 +53,12 @@ namespace {
 // Returns the initial chains for the given `cfgs`. More specifically, returns
 // the subset of elements in `initial_chains` whose key is equal to
 // `function_index` of some CFG in `cfgs`.
-absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>
+absl::flat_hash_map<int, std::vector<FunctionLayoutInfo::BbChain>>
 GetInitialChainsForCfgs(
     const std::vector<const ControlFlowGraph*>& cfgs,
-    const absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>&
+    const absl::flat_hash_map<int, std::vector<FunctionLayoutInfo::BbChain>>&
         initial_chains) {
-  absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>> result;
+  absl::flat_hash_map<int, std::vector<FunctionLayoutInfo::BbChain>> result;
   for (const ControlFlowGraph* cfg : cfgs) {
     auto it = initial_chains.find(cfg->function_index());
     if (it == initial_chains.end()) continue;
@@ -72,7 +72,7 @@ template <class AssemblyQueueImpl>
 NodeChainBuilder NodeChainBuilder::CreateNodeChainBuilder(
     const PropellerCodeLayoutScorer& scorer,
     const std::vector<const ControlFlowGraph*>& cfgs,
-    const absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>&
+    const absl::flat_hash_map<int, std::vector<FunctionLayoutInfo::BbChain>>&
         initial_chains,
     PropellerStats::CodeLayoutStats& stats) {
   return NodeChainBuilder(scorer, cfgs,
@@ -86,7 +86,7 @@ template NodeChainBuilder
 NodeChainBuilder::CreateNodeChainBuilder<NodeChainAssemblyIterativeQueue>(
     const PropellerCodeLayoutScorer& scorer,
     const std::vector<const ControlFlowGraph*>& cfgs,
-    const absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>&
+    const absl::flat_hash_map<int, std::vector<FunctionLayoutInfo::BbChain>>&
         initial_chains,
     PropellerStats::CodeLayoutStats& stats);
 
@@ -94,7 +94,7 @@ template NodeChainBuilder
 NodeChainBuilder::CreateNodeChainBuilder<NodeChainAssemblyBalancedTreeQueue>(
     const PropellerCodeLayoutScorer& scorer,
     const std::vector<const ControlFlowGraph*>& cfgs,
-    const absl::flat_hash_map<int, std::vector<FunctionChainInfo::BbChain>>&
+    const absl::flat_hash_map<int, std::vector<FunctionLayoutInfo::BbChain>>&
         initial_chains,
     PropellerStats::CodeLayoutStats& stats);
 
@@ -238,9 +238,10 @@ void NodeChainBuilder::InitNodeChains() {
       continue;
     }
     auto it = initial_chains_.find(cfg->function_index());
-    const std::vector<FunctionChainInfo::BbChain>& cfg_initial_chains =
-        it != initial_chains_.end() ? it->second
-                                    : std::vector<FunctionChainInfo::BbChain>{};
+    const std::vector<FunctionLayoutInfo::BbChain>& cfg_initial_chains =
+        it != initial_chains_.end()
+            ? it->second
+            : std::vector<FunctionLayoutInfo::BbChain>{};
     bool has_hot_landing_pads = cfg->has_hot_landing_pads();
     // In `inter_function_reordering` mode, check if we must coalesce the
     // landing pads for `cfg` which happens when `cfg` has more than one landing

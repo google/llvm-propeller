@@ -89,6 +89,11 @@ MATCHER_P7(CfgNodeFieldsAre, function_index, bb_index, clone_number, bb_id,
          arg.CalculateFrequency() == freq;
 }
 
+MATCHER_P(SectionProfileInfoSizeIs, size, "") {
+  return ExplainMatchResult(SizeIs(size), arg.profile_infos_by_function_index,
+                            result_listener);
+}
+
 static std::string GetPropellerTestDataFilePath(absl::string_view filename) {
   return absl::StrCat(::testing::SrcDir(), "_main/propeller/testdata/",
                       filename);

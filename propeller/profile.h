@@ -17,21 +17,31 @@
 
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "absl/container/btree_map.h"
 #include "llvm/ADT/StringRef.h"
-#include "propeller/function_chain_info.h"
+#include "propeller/function_layout_info.h"
 #include "propeller/program_cfg.h"
 #include "propeller/propeller_statistics.h"
 
 namespace propeller {
 
+// Contains profile information for a function.
+struct FunctionProfileInfo {
+  FunctionLayoutInfo layout_info;
+};
+
+// Contains profile information for functions in a section.
+struct SectionProfileInfo {
+  absl::btree_map<int, FunctionProfileInfo> profile_infos_by_function_index;
+};
+
+// Represents a Propeller profile, including CFGs, layout information and
+// statistics.
 struct PropellerProfile {
   std::unique_ptr<ProgramCfg> program_cfg;
-  // Layout of functions in each section.
-  absl::btree_map<llvm::StringRef, std::vector<FunctionChainInfo>>
-      functions_chain_info_by_section_name;
+  absl::btree_map<llvm::StringRef, SectionProfileInfo>
+      profile_infos_by_section_name;
   PropellerStats stats;
   // Build ID of the binary for which the profile was collected.
   std::string build_id;

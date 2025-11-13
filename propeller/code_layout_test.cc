@@ -42,8 +42,8 @@
 #include "propeller/chain_cluster_builder.h"
 #include "propeller/chain_merge_order.h"
 #include "propeller/code_layout_scorer.h"
-#include "propeller/function_chain_info.h"
-#include "propeller/function_chain_info_matchers.h"
+#include "propeller/function_layout_info.h"
+#include "propeller/function_layout_info_matchers.h"
 #include "propeller/mock_program_cfg_builder.h"
 #include "propeller/node_chain.h"
 #include "propeller/node_chain_assembly.h"
@@ -171,17 +171,17 @@ NodeChainBuilder CreateNodeChainBuilderForCfgs(
 }
 
 // Given a vector of 2D vectors of BB ids `chains`, constructs and returns a
-// vector of `FunctionChainInfo::BbChain`s.
-std::vector<FunctionChainInfo::BbChain> ConstructBbChains(
+// vector of `FunctionLayoutInfo::BbChain`s.
+std::vector<FunctionLayoutInfo::BbChain> ConstructBbChains(
     absl::Span<const absl::Span<const absl::Span<const IntraCfgId>>> chains) {
-  std::vector<FunctionChainInfo::BbChain> bb_chains;
+  std::vector<FunctionLayoutInfo::BbChain> bb_chains;
   absl::c_transform(chains, std::back_inserter(bb_chains),
                     [](absl::Span<const absl::Span<const IntraCfgId>> chain) {
-                      FunctionChainInfo::BbChain bb_chain(/*_layout_index=*/0);
+                      FunctionLayoutInfo::BbChain bb_chain(/*_layout_index=*/0);
                       absl::c_transform(
                           chain, std::back_inserter(bb_chain.bb_bundles),
                           [](absl::Span<const IntraCfgId> bb_ids) {
-                            FunctionChainInfo::BbBundle bb_bundle;
+                            FunctionLayoutInfo::BbBundle bb_bundle;
                             absl::c_transform(
                                 bb_ids,
                                 std::back_inserter(bb_bundle.full_bb_ids),
@@ -1446,19 +1446,20 @@ TEST(CodeLayoutTest, FindOptimalFallthroughNoSplitChains) {
   ASSERT_THAT(proto_program_cfg->program_cfg().cfgs_by_index(), SizeIs(1));
   PropellerCodeLayoutParameters params;
   params.set_chain_split(false);
-  std::vector<FunctionChainInfo> all_func_chain_info =
-      CodeLayout(params, proto_program_cfg->program_cfg().GetCfgs()).OrderAll();
-  ASSERT_THAT(all_func_chain_info, SizeIs(1));
-  auto& func_chain_info = all_func_chain_info[0];
-  EXPECT_THAT(all_func_chain_info,
-              ElementsAre(FunctionChainInfoIs(
-                  22,
+  SectionLayoutInfo layout_info =
+      CodeLayout(params, proto_program_cfg->program_cfg().GetCfgs())
+          .GenerateLayout();
+  ASSERT_THAT(layout_info.layouts_by_function_index, SizeIs(1));
+  auto& func_layout_info =
+      layout_info.layouts_by_function_index.begin()->second;
+  EXPECT_THAT(func_layout_info,
+              FunctionLayoutInfoIs(
                   ElementsAre(HasFullBbIds(ElementsAre(
                       BbIdIs(0), BbIdIs(1), BbIdIs(2), BbIdIs(4), BbIdIs(3)))),
-                  _, _, _)));
+                  _, _, _));
   // Verify that the new layout improves the score.
-  EXPECT_GT(func_chain_info.optimized_score.intra_score,
-            func_chain_info.original_score.intra_score);
+  EXPECT_GT(func_layout_info.optimized_score.intra_score,
+            func_layout_info.original_score.intra_score);
 }
 
 TEST(CodeLayoutTest, FindOptimalFallthroughSplitChains) {
@@ -1470,19 +1471,20 @@ TEST(CodeLayoutTest, FindOptimalFallthroughSplitChains) {
   ASSERT_THAT(proto_program_cfg->program_cfg().cfgs_by_index(), SizeIs(1));
   PropellerCodeLayoutParameters params;
   params.set_chain_split(true);
-  std::vector<FunctionChainInfo> all_func_chain_info =
-      CodeLayout(params, proto_program_cfg->program_cfg().GetCfgs()).OrderAll();
-  ASSERT_THAT(all_func_chain_info, SizeIs(1));
-  auto& func_chain_info = all_func_chain_info[0];
-  EXPECT_THAT(func_chain_info,
-              FunctionChainInfoIs(
-                  22,
+  SectionLayoutInfo layout_info =
+      CodeLayout(params, proto_program_cfg->program_cfg().GetCfgs())
+          .GenerateLayout();
+  ASSERT_THAT(layout_info.layouts_by_function_index, SizeIs(1));
+  auto& func_layout_info =
+      layout_info.layouts_by_function_index.begin()->second;
+  EXPECT_THAT(func_layout_info,
+              FunctionLayoutInfoIs(
                   ElementsAre(HasFullBbIds(ElementsAre(
                       BbIdIs(0), BbIdIs(1), BbIdIs(3), BbIdIs(2), BbIdIs(4)))),
                   _, _, _));
   // Verify that the new layout improves the score.
-  EXPECT_GT(func_chain_info.optimized_score.intra_score,
-            func_chain_info.original_score.intra_score);
+  EXPECT_GT(func_layout_info.optimized_score.intra_score,
+            func_layout_info.original_score.intra_score);
 }
 
 TEST(CodeLayoutTest, FindOptimalLoopLayout) {
@@ -1492,21 +1494,21 @@ TEST(CodeLayoutTest, FindOptimalLoopLayout) {
                                              "simple_loop.protobuf")));
 
   ASSERT_THAT(proto_program_cfg->program_cfg().cfgs_by_index(), SizeIs(1));
-  std::vector<FunctionChainInfo> all_func_chain_info =
+  SectionLayoutInfo layout_info =
       CodeLayout(PropellerCodeLayoutParameters(),
                  proto_program_cfg->program_cfg().GetCfgs())
-          .OrderAll();
-  ASSERT_THAT(all_func_chain_info, SizeIs(1));
-  auto& func_chain_info = all_func_chain_info[0];
+          .GenerateLayout();
+  ASSERT_THAT(layout_info.layouts_by_function_index, SizeIs(1));
+  auto& func_layout_info =
+      layout_info.layouts_by_function_index.begin()->second;
   EXPECT_THAT(
-      func_chain_info,
-      FunctionChainInfoIs(0,
-                          ElementsAre(HasFullBbIds(ElementsAre(
-                              BbIdIs(0), BbIdIs(1), BbIdIs(3), BbIdIs(4)))),
-                          _, _, _));
+      func_layout_info,
+      FunctionLayoutInfoIs(ElementsAre(HasFullBbIds(ElementsAre(
+                               BbIdIs(0), BbIdIs(1), BbIdIs(3), BbIdIs(4)))),
+                           _, _, _));
   // Verify that the new layout improves the score.
-  EXPECT_GT(func_chain_info.optimized_score.intra_score,
-            func_chain_info.original_score.intra_score);
+  EXPECT_GT(func_layout_info.optimized_score.intra_score,
+            func_layout_info.original_score.intra_score);
 }
 
 TEST(CodeLayoutTest, FindOptimalNestedLoopLayout) {
@@ -1515,21 +1517,21 @@ TEST(CodeLayoutTest, FindOptimalNestedLoopLayout) {
       BuildFromCfgProtoPath(GetTestInputPath("_main/propeller/testdata/"
                                              "nested_loop.protobuf")));
   ASSERT_THAT(proto_program_cfg->program_cfg().cfgs_by_index(), SizeIs(1));
-  std::vector<FunctionChainInfo> all_func_chain_info =
+  SectionLayoutInfo layout_info =
       CodeLayout(PropellerCodeLayoutParameters(),
                  proto_program_cfg->program_cfg().GetCfgs())
-          .OrderAll();
-  ASSERT_THAT(all_func_chain_info, SizeIs(1));
-  auto& func_chain_info = all_func_chain_info[0];
-  EXPECT_THAT(func_chain_info,
-              FunctionChainInfoIs(_,
-                                  ElementsAre(HasFullBbIds(ElementsAre(
-                                      BbIdIs(0), BbIdIs(3), BbIdIs(1),
-                                      BbIdIs(4), BbIdIs(5), BbIdIs(2)))),
-                                  _, _, _));
+          .GenerateLayout();
+  ASSERT_THAT(layout_info.layouts_by_function_index, SizeIs(1));
+  auto& func_layout_info =
+      layout_info.layouts_by_function_index.begin()->second;
+  EXPECT_THAT(func_layout_info,
+              FunctionLayoutInfoIs(ElementsAre(HasFullBbIds(ElementsAre(
+                                       BbIdIs(0), BbIdIs(3), BbIdIs(1),
+                                       BbIdIs(4), BbIdIs(5), BbIdIs(2)))),
+                                   _, _, _));
   // Verify that the new layout improves the score.
-  EXPECT_GT(func_chain_info.optimized_score.intra_score,
-            func_chain_info.original_score.intra_score);
+  EXPECT_GT(func_layout_info.optimized_score.intra_score,
+            func_layout_info.original_score.intra_score);
 }
 
 TEST(CodeLayoutTest, FindOptimalMultiFunctionLayout) {
@@ -1540,35 +1542,33 @@ TEST(CodeLayoutTest, FindOptimalMultiFunctionLayout) {
 
   PropellerCodeLayoutParameters params;
   params.set_call_chain_clustering(true);
-  std::vector<FunctionChainInfo> all_func_chain_info =
-      CodeLayout(params, proto_program_cfg->program_cfg().GetCfgs()).OrderAll();
+  SectionLayoutInfo layout_info =
+      CodeLayout(params, proto_program_cfg->program_cfg().GetCfgs())
+          .GenerateLayout();
 
   EXPECT_THAT(
-      all_func_chain_info,
-      ElementsAre(
-          FunctionChainInfoIs(
-              0,
-              ElementsAre(BbChainIs(
-                  1, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
-                                 BbBundleIs(ElementsAre(BbIdIs(2))),
-                                 BbBundleIs(ElementsAre(BbIdIs(1)))))),
-              CfgScoreIsNear(98.82353, 0, kEpsilon),
-              CfgScoreIsNear(819.88281, 0, kEpsilon), 1),
-          FunctionChainInfoIs(
-              1,
-              ElementsAre(BbChainIs(
-                  0,
-                  ElementsAre(
-                      BbBundleIs(ElementsAre(BbIdIs(0), BbIdIs(1), BbIdIs(3))),
-                      BbBundleIs(ElementsAre(BbIdIs(2), BbIdIs(4)))))),
-              CfgScoreIsNear(199.62353, 99.55882, kEpsilon),
-              CfgScoreIsNear(2020.00000, 97.36328, kEpsilon), 0),
-          FunctionChainInfoIs(
-              100,
-              ElementsAre(BbChainIs(
-                  2, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0)))))),
-              CfgScoreIsNear(9.91176, 0, kEpsilon),
-              CfgScoreIsNear(9.91176, 0, kEpsilon), 2)));
+      layout_info.layouts_by_function_index,
+      UnorderedElementsAre(
+          Pair(0, FunctionLayoutInfoIs(
+                      ElementsAre(BbChainIs(
+                          1, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
+                                         BbBundleIs(ElementsAre(BbIdIs(2))),
+                                         BbBundleIs(ElementsAre(BbIdIs(1)))))),
+                      CfgScoreIsNear(98.82353, 0, kEpsilon),
+                      CfgScoreIsNear(819.88281, 0, kEpsilon), 1)),
+          Pair(1, FunctionLayoutInfoIs(
+                      ElementsAre(BbChainIs(
+                          0, ElementsAre(BbBundleIs(ElementsAre(
+                                             BbIdIs(0), BbIdIs(1), BbIdIs(3))),
+                                         BbBundleIs(ElementsAre(BbIdIs(2),
+                                                                BbIdIs(4)))))),
+                      CfgScoreIsNear(199.62353, 99.55882, kEpsilon),
+                      CfgScoreIsNear(2020.00000, 97.36328, kEpsilon), 0)),
+          Pair(100, FunctionLayoutInfoIs(
+                        ElementsAre(BbChainIs(2, ElementsAre(BbBundleIs(
+                                                     ElementsAre(BbIdIs(0)))))),
+                        CfgScoreIsNear(9.91176, 0, kEpsilon),
+                        CfgScoreIsNear(9.91176, 0, kEpsilon), 2))));
 }
 
 TEST(CodeLayoutTest, FindLayoutNoReorderHotBlocks) {
@@ -1579,9 +1579,9 @@ TEST(CodeLayoutTest, FindLayoutNoReorderHotBlocks) {
 
   PropellerCodeLayoutParameters params;
   params.set_reorder_hot_blocks(false);
-  EXPECT_THAT(
-      CodeLayout(params, proto_program_cfg->program_cfg().GetCfgs()).OrderAll(),
-      _);
+  EXPECT_THAT(CodeLayout(params, proto_program_cfg->program_cfg().GetCfgs())
+                  .GenerateLayout(),
+              _);
 }
 
 TEST(CodeLayoutTest, FindLayoutNoFunctionSplit) {
@@ -1593,14 +1593,17 @@ TEST(CodeLayoutTest, FindLayoutNoFunctionSplit) {
   PropellerCodeLayoutParameters params;
   params.set_split_functions(false);
   EXPECT_THAT(
-      CodeLayout(params, proto_program_cfg->program_cfg().GetCfgs()).OrderAll(),
-      ElementsAre(FunctionChainInfoIs(
-          999,
-          ElementsAre(BbChainIs(
-              0, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
-                             BbBundleIs(ElementsAre(BbIdIs(3), BbIdIs(1))),
-                             BbBundleIs(ElementsAre(BbIdIs(2), BbIdIs(4)))))),
-          _, _, 0)));
+      CodeLayout(params, proto_program_cfg->program_cfg().GetCfgs())
+          .GenerateLayout()
+          .layouts_by_function_index,
+      UnorderedElementsAre(Pair(
+          _, FunctionLayoutInfoIs(
+                 ElementsAre(BbChainIs(
+                     0, ElementsAre(
+                            BbBundleIs(ElementsAre(BbIdIs(0))),
+                            BbBundleIs(ElementsAre(BbIdIs(3), BbIdIs(1))),
+                            BbBundleIs(ElementsAre(BbIdIs(2), BbIdIs(4)))))),
+                 _, _, 0))));
 }
 
 TEST(CodeLayoutTest, FindLayoutNoReorderHotBlocksNoFunctionSplit) {
@@ -1613,14 +1616,17 @@ TEST(CodeLayoutTest, FindLayoutNoReorderHotBlocksNoFunctionSplit) {
   params.set_split_functions(false);
   params.set_reorder_hot_blocks(false);
   EXPECT_THAT(
-      CodeLayout(params, proto_program_cfg->program_cfg().GetCfgs()).OrderAll(),
-      ElementsAre(FunctionChainInfoIs(
-          999,
-          ElementsAre(BbChainIs(
-              0, ElementsAre(
-                     BbBundleIs(ElementsAre(BbIdIs(0), BbIdIs(1), BbIdIs(3))),
-                     BbBundleIs(ElementsAre(BbIdIs(2), BbIdIs(4)))))),
-          _, _, 0)));
+      CodeLayout(params, proto_program_cfg->program_cfg().GetCfgs())
+          .GenerateLayout()
+          .layouts_by_function_index,
+      UnorderedElementsAre(Pair(
+          _, FunctionLayoutInfoIs(
+                 ElementsAre(BbChainIs(
+                     0, ElementsAre(
+                            BbBundleIs(
+                                ElementsAre(BbIdIs(0), BbIdIs(1), BbIdIs(3))),
+                            BbBundleIs(ElementsAre(BbIdIs(2), BbIdIs(4)))))),
+                 _, _, 0))));
 }
 
 TEST(CodeLayoutTest, FindOptimalMultiFunctionLayoutInterFunction) {
@@ -1632,32 +1638,32 @@ TEST(CodeLayoutTest, FindOptimalMultiFunctionLayoutInterFunction) {
   PropellerCodeLayoutParameters params;
   params.set_call_chain_clustering(true);
   params.set_inter_function_reordering(true);
-  std::vector<FunctionChainInfo> all_func_chain_info =
-      CodeLayout(params, proto_program_cfg->program_cfg().GetCfgs()).OrderAll();
+  SectionLayoutInfo layout_info =
+      CodeLayout(params, proto_program_cfg->program_cfg().GetCfgs())
+          .GenerateLayout();
 
   EXPECT_THAT(
-      all_func_chain_info,
-      ElementsAre(
-          FunctionChainInfoIs(
-              0,
-              ElementsAre(BbChainIs(1, ElementsAre(BbBundleIs(ElementsAre(
+      layout_info.layouts_by_function_index,
+      UnorderedElementsAre(
+          Pair(0, FunctionLayoutInfoIs(
+                      ElementsAre(
+                          BbChainIs(1, ElementsAre(BbBundleIs(ElementsAre(
                                            BbIdIs(0), BbIdIs(2), BbIdIs(1)))))),
-              CfgScoreIsNear(98.82353, 0, kEpsilon),
-              CfgScoreIsNear(819.88281, 0, kEpsilon), 1),
-          FunctionChainInfoIs(
-              1,
-              ElementsAre(BbChainIs(0, ElementsAre(BbBundleIs(ElementsAre(
+                      CfgScoreIsNear(98.82353, 0, kEpsilon),
+                      CfgScoreIsNear(819.88281, 0, kEpsilon), 1)),
+          Pair(1, FunctionLayoutInfoIs(
+                      ElementsAre(
+                          BbChainIs(0, ElementsAre(BbBundleIs(ElementsAre(
                                            BbIdIs(0), BbIdIs(1), BbIdIs(3))))),
                           BbChainIs(3, ElementsAre(BbBundleIs(ElementsAre(
                                            BbIdIs(2), BbIdIs(4)))))),
-              CfgScoreIsNear(199.62353, 99.55882, kEpsilon),
-              CfgScoreIsNear(2020.00000, 99.12109, kEpsilon), 0),
-          FunctionChainInfoIs(
-              100,
-              ElementsAre(BbChainIs(
-                  2, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0)))))),
-              CfgScoreIsNear(9.91176, 0, kEpsilon),
-              CfgScoreIsNear(9.91176, 0, kEpsilon), 2)));
+                      CfgScoreIsNear(199.62353, 99.55882, kEpsilon),
+                      CfgScoreIsNear(2020.00000, 99.12109, kEpsilon), 0)),
+          Pair(100, FunctionLayoutInfoIs(
+                        ElementsAre(BbChainIs(2, ElementsAre(BbBundleIs(
+                                                     ElementsAre(BbIdIs(0)))))),
+                        CfgScoreIsNear(9.91176, 0, kEpsilon),
+                        CfgScoreIsNear(9.91176, 0, kEpsilon), 2))));
 }
 
 TEST(CodeLayoutTest, PlacesBlocksBeforeEntryInInterFunctionOrdering) {
@@ -1675,19 +1681,21 @@ TEST(CodeLayoutTest, PlacesBlocksBeforeEntryInInterFunctionOrdering) {
                       {2, 1, 40, CFGEdgeKind::kBranchOrFallthough}}}}});
   PropellerCodeLayoutParameters params;
   params.set_inter_function_reordering(true);
-  std::vector<FunctionChainInfo> all_func_chain_info =
-      CodeLayout(params, program_cfg->GetCfgs()).OrderAll();
+  SectionLayoutInfo layout_info =
+      CodeLayout(params, program_cfg->GetCfgs()).GenerateLayout();
 
   EXPECT_THAT(
-      all_func_chain_info,
-      ElementsAre(FunctionChainInfoIs(
-          0,
-          ElementsAre(
-              BbChainIs(1, ElementsAre(
-                               BbBundleIs(ElementsAre(BbIdIs(0))),
-                               BbBundleIs(ElementsAre(BbIdIs(1), BbIdIs(2))))),
-              BbChainIs(0, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(3)))))),
-          _, _, _)));
+      layout_info.layouts_by_function_index,
+      UnorderedElementsAre(Pair(
+          _,
+          FunctionLayoutInfoIs(
+              ElementsAre(
+                  BbChainIs(1, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
+                                           BbBundleIs(ElementsAre(BbIdIs(1),
+                                                                  BbIdIs(2))))),
+                  BbChainIs(0,
+                            ElementsAre(BbBundleIs(ElementsAre(BbIdIs(3)))))),
+              _, _, _))));
 }
 
 TEST(CodeLayoutTest, PlacesEntryBlockFirstInIntraFunctionOrdering) {
@@ -1705,18 +1713,18 @@ TEST(CodeLayoutTest, PlacesEntryBlockFirstInIntraFunctionOrdering) {
                       {2, 1, 40, CFGEdgeKind::kBranchOrFallthough}}}}});
   PropellerCodeLayoutParameters params;
   params.set_inter_function_reordering(false);
-  std::vector<FunctionChainInfo> all_func_chain_info =
-      CodeLayout(params, program_cfg->GetCfgs()).OrderAll();
-
   EXPECT_THAT(
-      all_func_chain_info,
-      ElementsAre(FunctionChainInfoIs(
-          0,
-          ElementsAre(BbChainIs(
-              0, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
-                             BbBundleIs(ElementsAre(BbIdIs(1), BbIdIs(2))),
-                             BbBundleIs(ElementsAre(BbIdIs(3)))))),
-          _, _, _)));
+      CodeLayout(params, program_cfg->GetCfgs())
+          .GenerateLayout()
+          .layouts_by_function_index,
+      UnorderedElementsAre(Pair(
+          _,
+          FunctionLayoutInfoIs(
+              ElementsAre(BbChainIs(
+                  0, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
+                                 BbBundleIs(ElementsAre(BbIdIs(1), BbIdIs(2))),
+                                 BbBundleIs(ElementsAre(BbIdIs(3)))))),
+              _, _, _))));
 }
 
 TEST(CodeLayoutTest, FindOptimalLayoutHotAndColdLandingPads) {
@@ -1724,22 +1732,23 @@ TEST(CodeLayoutTest, FindOptimalLayoutHotAndColdLandingPads) {
                        BuildFromCfgProtoPath(GetTestInputPath(
                            "_main/propeller/testdata/"
                            "hot_and_cold_landing_pads.protobuf")));
-
   EXPECT_THAT(
       CodeLayout(PropellerCodeLayoutParameters(),
                  proto_program_cfg->program_cfg().GetCfgs())
-          .OrderAll(),
-      Contains(FunctionChainInfoIs(
-          10,
-          // Check that the cold landing pad block (#3) is merged
-          // into the single chain for function 'foo'.
-          ElementsAre(BbChainIs(
-              _, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
-                             BbBundleIs(ElementsAre(BbIdIs(1), BbIdIs(4))),
-                             BbBundleIs(ElementsAre(BbIdIs(2))),
-                             BbBundleIs(ElementsAre(BbIdIs(5))),
-                             BbBundleIs(ElementsAre(BbIdIs(3)))))),
-          _, _, _)));
+          .GenerateLayout()
+          .layouts_by_function_index,
+      Contains(Pair(
+          _,
+          FunctionLayoutInfoIs(
+              // Check that the cold landing pad block (#3) is merged
+              // into the single chain for function 'foo'.
+              ElementsAre(BbChainIs(
+                  _, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
+                                 BbBundleIs(ElementsAre(BbIdIs(1), BbIdIs(4))),
+                                 BbBundleIs(ElementsAre(BbIdIs(2))),
+                                 BbBundleIs(ElementsAre(BbIdIs(5))),
+                                 BbBundleIs(ElementsAre(BbIdIs(3)))))),
+              _, _, _))));
 }
 
 TEST(CodeLayoutTest, FindOptimalLayoutAllColdLandingPads) {
@@ -1748,18 +1757,20 @@ TEST(CodeLayoutTest, FindOptimalLayoutAllColdLandingPads) {
                            GetTestInputPath("_main/propeller/testdata/"
                                             "all_cold_landing_pads.protobuf")));
 
-  EXPECT_THAT(CodeLayout(PropellerCodeLayoutParameters(),
-                         proto_program_cfg->program_cfg().GetCfgs())
-                  .OrderAll(),
-              Contains(FunctionChainInfoIs(
-                  100,
-                  // Check that landing pad blocks (#2, and #3) are not merged
-                  // into the chain.
-                  // This means they will be in the cold section.
-                  ElementsAre(BbChainIs(
-                      _, ElementsAre(BbBundleIs(ElementsAre(
-                             BbIdIs(0), BbIdIs(1), BbIdIs(4), BbIdIs(5)))))),
-                  _, _, _)));
+  EXPECT_THAT(
+      CodeLayout(PropellerCodeLayoutParameters(),
+                 proto_program_cfg->program_cfg().GetCfgs())
+          .GenerateLayout()
+          .layouts_by_function_index,
+      Contains(Pair(
+          _, FunctionLayoutInfoIs(
+                 // Check that landing pad blocks (#2, and #3) are not
+                 // merged into the chain. This means they will be in
+                 // the cold section.
+                 ElementsAre(BbChainIs(
+                     _, ElementsAre(BbBundleIs(ElementsAre(
+                            BbIdIs(0), BbIdIs(1), BbIdIs(4), BbIdIs(5)))))),
+                 _, _, _))));
 }
 
 TEST(CodeLayoutTest, FindOptimalInterFunctionLayoutHotAndColdLandingPads) {
@@ -1773,15 +1784,17 @@ TEST(CodeLayoutTest, FindOptimalInterFunctionLayoutHotAndColdLandingPads) {
   EXPECT_THAT(
       CodeLayout(params, proto_program_cfg->program_cfg().GetCfgs(),
                  /*initial_chains=*/{})
-          .OrderAll(),
-      Contains(FunctionChainInfoIs(
-          10,
-          // Check that for inter-function reordering, both landing pad
-          // blocks (#2, and #3) are merged into the chain.
-          ElementsAre(BbChainIs(_, ElementsAre(BbBundleIs(ElementsAre(
-                                       BbIdIs(0), BbIdIs(1), BbIdIs(4),
-                                       BbIdIs(2), BbIdIs(5), BbIdIs(3)))))),
-          _, _, _)));
+          .GenerateLayout()
+          .layouts_by_function_index,
+      Contains(Pair(
+          _,
+          FunctionLayoutInfoIs(
+              // Check that for inter-function reordering, both landing pad
+              // blocks (#2, and #3) are merged into the chain.
+              ElementsAre(BbChainIs(_, ElementsAre(BbBundleIs(ElementsAre(
+                                           BbIdIs(0), BbIdIs(1), BbIdIs(4),
+                                           BbIdIs(2), BbIdIs(5), BbIdIs(3)))))),
+              _, _, _))));
 }
 
 TEST(CodeLayoutTest, KeepsInitialChainsWithoutChainSplit) {
@@ -1799,20 +1812,21 @@ TEST(CodeLayoutTest, KeepsInitialChainsWithoutChainSplit) {
                       {2, 1, 40, CFGEdgeKind::kBranchOrFallthough}}}}});
   PropellerCodeLayoutParameters params;
   params.set_chain_split(false);
-  std::vector<FunctionChainInfo> chain_info =
+  SectionLayoutInfo layout_info =
       CodeLayout(
           params, program_cfg->GetCfgs(),
           /*initial_chains=*/{{0, ConstructBbChains({{{{0, 0}}, {{2, 0}}}})}})
-          .OrderAll();
-  EXPECT_THAT(chain_info,
-              ElementsAre(FunctionChainInfoIs(
-                  0,
-                  ElementsAre(BbChainIs(
-                      0, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
-                                     BbBundleIs(ElementsAre(BbIdIs(2))),
-                                     BbBundleIs(ElementsAre(BbIdIs(1))),
-                                     BbBundleIs(ElementsAre(BbIdIs(3)))))),
-                  _, _, _)));
+          .GenerateLayout();
+  EXPECT_THAT(
+      layout_info.layouts_by_function_index,
+      UnorderedElementsAre(
+          Pair(_, FunctionLayoutInfoIs(
+                      ElementsAre(BbChainIs(
+                          0, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
+                                         BbBundleIs(ElementsAre(BbIdIs(2))),
+                                         BbBundleIs(ElementsAre(BbIdIs(1))),
+                                         BbBundleIs(ElementsAre(BbIdIs(3)))))),
+                      _, _, _))));
 }
 
 TEST(CodeLayoutTest, KeepsMultipleInitialChainsWithoutChainSplit) {
@@ -1830,21 +1844,22 @@ TEST(CodeLayoutTest, KeepsMultipleInitialChainsWithoutChainSplit) {
                       {2, 1, 40, CFGEdgeKind::kBranchOrFallthough}}}}});
   PropellerCodeLayoutParameters params;
   params.set_chain_split(false);
-  std::vector<FunctionChainInfo> chain_info =
+  SectionLayoutInfo layout_info =
       CodeLayout(params, program_cfg->GetCfgs(),
                  /*initial_chains=*/
                  {{0, ConstructBbChains(
                           {{{{0, 0}}, {{2, 0}}}, {{{3, 0}}, {{1, 0}}}})}})
-          .OrderAll();
-  EXPECT_THAT(chain_info,
-              ElementsAre(FunctionChainInfoIs(
-                  0,
-                  ElementsAre(BbChainIs(
-                      0, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
-                                     BbBundleIs(ElementsAre(BbIdIs(2))),
-                                     BbBundleIs(ElementsAre(BbIdIs(3))),
-                                     BbBundleIs(ElementsAre(BbIdIs(1)))))),
-                  _, _, _)));
+          .GenerateLayout();
+  EXPECT_THAT(
+      layout_info.layouts_by_function_index,
+      UnorderedElementsAre(
+          Pair(_, FunctionLayoutInfoIs(
+                      ElementsAre(BbChainIs(
+                          0, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
+                                         BbBundleIs(ElementsAre(BbIdIs(2))),
+                                         BbBundleIs(ElementsAre(BbIdIs(3))),
+                                         BbBundleIs(ElementsAre(BbIdIs(1)))))),
+                      _, _, _))));
 }
 
 TEST(CodeLayoutTest, BreaksInitialChainsWithChainSplit) {
@@ -1862,20 +1877,21 @@ TEST(CodeLayoutTest, BreaksInitialChainsWithChainSplit) {
                       {2, 1, 40, CFGEdgeKind::kBranchOrFallthough}}}}});
   PropellerCodeLayoutParameters params;
   params.set_chain_split(true);
-  std::vector<FunctionChainInfo> chain_info =
+  SectionLayoutInfo layout_info =
       CodeLayout(
           params, program_cfg->GetCfgs(),
           /*initial_chains=*/{{0, ConstructBbChains({{{{0, 0}}, {{2, 0}}}})}})
-          .OrderAll();
-  EXPECT_THAT(chain_info,
-              ElementsAre(FunctionChainInfoIs(
-                  0,
-                  ElementsAre(BbChainIs(
-                      0, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
-                                     BbBundleIs(ElementsAre(BbIdIs(1))),
-                                     BbBundleIs(ElementsAre(BbIdIs(2))),
-                                     BbBundleIs(ElementsAre(BbIdIs(3)))))),
-                  _, _, _)));
+          .GenerateLayout();
+  EXPECT_THAT(
+      layout_info.layouts_by_function_index,
+      UnorderedElementsAre(
+          Pair(_, FunctionLayoutInfoIs(
+                      ElementsAre(BbChainIs(
+                          0, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
+                                         BbBundleIs(ElementsAre(BbIdIs(1))),
+                                         BbBundleIs(ElementsAre(BbIdIs(2))),
+                                         BbBundleIs(ElementsAre(BbIdIs(3)))))),
+                      _, _, _))));
 }
 
 TEST(CodeLayoutTest, KeepsProfitableInitialChainsWithChainSplit) {
@@ -1893,20 +1909,21 @@ TEST(CodeLayoutTest, KeepsProfitableInitialChainsWithChainSplit) {
                       {2, 1, 40, CFGEdgeKind::kBranchOrFallthough}}}}});
   PropellerCodeLayoutParameters params;
   params.set_chain_split(true);
-  std::vector<FunctionChainInfo> chain_info =
+  SectionLayoutInfo layout_info =
       CodeLayout(
           params, program_cfg->GetCfgs(),
           /*initial_chains=*/{{0, ConstructBbChains({{{{1, 0}}, {{2, 0}}}})}})
-          .OrderAll();
-  EXPECT_THAT(chain_info,
-              ElementsAre(FunctionChainInfoIs(
-                  0,
-                  ElementsAre(BbChainIs(
-                      0, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
-                                     BbBundleIs(ElementsAre(BbIdIs(1))),
-                                     BbBundleIs(ElementsAre(BbIdIs(2))),
-                                     BbBundleIs(ElementsAre(BbIdIs(3)))))),
-                  _, _, _)));
+          .GenerateLayout();
+  EXPECT_THAT(
+      layout_info.layouts_by_function_index,
+      UnorderedElementsAre(
+          Pair(_, FunctionLayoutInfoIs(
+                      ElementsAre(BbChainIs(
+                          0, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
+                                         BbBundleIs(ElementsAre(BbIdIs(1))),
+                                         BbBundleIs(ElementsAre(BbIdIs(2))),
+                                         BbBundleIs(ElementsAre(BbIdIs(3)))))),
+                      _, _, _))));
 }
 
 TEST(CodeLayoutTest, BreaksInitialChainsWithChainSplitEdgeFromMiddle) {
@@ -1924,19 +1941,20 @@ TEST(CodeLayoutTest, BreaksInitialChainsWithChainSplitEdgeFromMiddle) {
                       {2, 1, 40, CFGEdgeKind::kBranchOrFallthough}}}}});
   PropellerCodeLayoutParameters params;
   params.set_chain_split(true);
-  std::vector<FunctionChainInfo> chain_info =
+  SectionLayoutInfo layout_info =
       CodeLayout(params, program_cfg->GetCfgs(),
                  /*initial_chains=*/
                  {{0, ConstructBbChains({{{{0, 0}, {1, 0}, {3, 0}}}})}})
-          .OrderAll();
-  EXPECT_THAT(chain_info,
-              ElementsAre(FunctionChainInfoIs(
-                  0,
-                  ElementsAre(BbChainIs(
-                      0, ElementsAre(BbBundleIs(ElementsAre(
-                                         BbIdIs(0), BbIdIs(1), BbIdIs(3))),
-                                     BbBundleIs(ElementsAre(BbIdIs(2)))))),
-                  _, _, _)));
+          .GenerateLayout();
+  EXPECT_THAT(
+      layout_info.layouts_by_function_index,
+      UnorderedElementsAre(
+          Pair(_, FunctionLayoutInfoIs(
+                      ElementsAre(BbChainIs(
+                          0, ElementsAre(BbBundleIs(ElementsAre(
+                                             BbIdIs(0), BbIdIs(1), BbIdIs(3))),
+                                         BbBundleIs(ElementsAre(BbIdIs(2)))))),
+                      _, _, _))));
 }
 
 TEST(CodeLayoutTest, BreaksInitialChainsWithChainSplitEdgeToMiddle) {
@@ -1954,19 +1972,20 @@ TEST(CodeLayoutTest, BreaksInitialChainsWithChainSplitEdgeToMiddle) {
                       {2, 1, 40, CFGEdgeKind::kBranchOrFallthough}}}}});
   PropellerCodeLayoutParameters params;
   params.set_chain_split(true);
-  std::vector<FunctionChainInfo> chain_info =
+  SectionLayoutInfo layout_info =
       CodeLayout(params, program_cfg->GetCfgs(),
                  /*initial_chains=*/
                  {{0, ConstructBbChains({{{{1, 0}, {3, 0}, {2, 0}}}})}})
-          .OrderAll();
-  EXPECT_THAT(chain_info,
-              ElementsAre(FunctionChainInfoIs(
-                  0,
-                  ElementsAre(BbChainIs(
-                      0, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
-                                     BbBundleIs(ElementsAre(
-                                         BbIdIs(1), BbIdIs(3), BbIdIs(2)))))),
-                  _, _, _)));
+          .GenerateLayout();
+  EXPECT_THAT(
+      layout_info.layouts_by_function_index,
+      UnorderedElementsAre(Pair(
+          _, FunctionLayoutInfoIs(
+                 ElementsAre(BbChainIs(
+                     0, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
+                                    BbBundleIs(ElementsAre(BbIdIs(1), BbIdIs(3),
+                                                           BbIdIs(2)))))),
+                 _, _, _))));
 }
 
 TEST(CodeLayoutTest, FailsWithDuplicateNodesInInitialChains) {
@@ -1989,7 +2008,7 @@ TEST(CodeLayoutTest, FailsWithDuplicateNodesInInitialChains) {
           params, program_cfg->GetCfgs(),
           /*initial_chains=*/
           {{0, ConstructBbChains({{{{1, 0}, {2, 0}}, {{2, 0}, {3, 0}}}})}})
-          .OrderAll(),
+          .GenerateLayout(),
       HasSubstr("Node [function index: 0, [BB index: 2, clone number: 0]] is "
                 "already in a bundle"));
 }
@@ -2095,19 +2114,19 @@ TEST(CodeLayoutTest, PrioritizesFallthroughWithAlwaysFallthroughBonus) {
     PropellerCodeLayoutParameters params;
     params.set_chain_split(true);
     params.set_always_fallthrough_branch_weight(0);
-    std::vector<FunctionChainInfo> all_func_chain_info =
-        CodeLayout(params, program_cfg->GetCfgs()).OrderAll();
-    ASSERT_THAT(all_func_chain_info, SizeIs(1));
-    EXPECT_THAT(all_func_chain_info[0],
-                FunctionChainInfoIs(
-                    0,
-                    ElementsAre(BbChainIs(
-                        0, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
-                                       BbBundleIs(ElementsAre(BbIdIs(1))),
-                                       BbBundleIs(ElementsAre(BbIdIs(2))),
-                                       BbBundleIs(ElementsAre(BbIdIs(4))),
-                                       BbBundleIs(ElementsAre(BbIdIs(3)))))),
-                    _, _, _));
+    SectionLayoutInfo layout_info =
+        CodeLayout(params, program_cfg->GetCfgs()).GenerateLayout();
+    EXPECT_THAT(
+        layout_info.layouts_by_function_index,
+        UnorderedElementsAre(Pair(
+            _, FunctionLayoutInfoIs(
+                   ElementsAre(BbChainIs(
+                       0, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
+                                      BbBundleIs(ElementsAre(BbIdIs(1))),
+                                      BbBundleIs(ElementsAre(BbIdIs(2))),
+                                      BbBundleIs(ElementsAre(BbIdIs(4))),
+                                      BbBundleIs(ElementsAre(BbIdIs(3)))))),
+                   _, _, _))));
   }
 
   // Case 2: High always_fallthrough_branch_weight.
@@ -2118,19 +2137,19 @@ TEST(CodeLayoutTest, PrioritizesFallthroughWithAlwaysFallthroughBonus) {
     PropellerCodeLayoutParameters params;
     params.set_chain_split(true);
     params.set_always_fallthrough_branch_weight(100);
-    std::vector<FunctionChainInfo> all_func_chain_info =
-        CodeLayout(params, program_cfg->GetCfgs()).OrderAll();
-    ASSERT_THAT(all_func_chain_info, SizeIs(1));
-    EXPECT_THAT(all_func_chain_info[0],
-                FunctionChainInfoIs(
-                    0,
-                    ElementsAre(BbChainIs(
-                        0, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
-                                       BbBundleIs(ElementsAre(BbIdIs(1))),
-                                       BbBundleIs(ElementsAre(BbIdIs(2))),
-                                       BbBundleIs(ElementsAre(BbIdIs(3))),
-                                       BbBundleIs(ElementsAre(BbIdIs(4)))))),
-                    _, _, _));
+    SectionLayoutInfo layout_info =
+        CodeLayout(params, program_cfg->GetCfgs()).GenerateLayout();
+    EXPECT_THAT(
+        layout_info.layouts_by_function_index,
+        UnorderedElementsAre(Pair(
+            _, FunctionLayoutInfoIs(
+                   ElementsAre(BbChainIs(
+                       0, ElementsAre(BbBundleIs(ElementsAre(BbIdIs(0))),
+                                      BbBundleIs(ElementsAre(BbIdIs(1))),
+                                      BbBundleIs(ElementsAre(BbIdIs(2))),
+                                      BbBundleIs(ElementsAre(BbIdIs(3))),
+                                      BbBundleIs(ElementsAre(BbIdIs(4)))))),
+                   _, _, _))));
   }
 }
 }  // namespace

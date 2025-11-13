@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -32,7 +33,7 @@
 #include "propeller/cfg_edge_kind.h"
 #include "propeller/cfg_node.h"
 #include "propeller/code_layout.h"
-#include "propeller/function_chain_info.h"
+#include "propeller/function_layout_info.h"
 #include "propeller/path_clone_evaluator.h"
 #include "propeller/path_node.h"
 #include "propeller/path_profile_options.pb.h"
@@ -253,16 +254,16 @@ CloneApplicatorStats ApplyClonings(
 
     const ControlFlowGraph* cfg = program_cfg.GetCfgByIndex(function_index);
     CfgBuilder cfg_builder(cfg);
-    auto compute_optimal_chain_info = [&]() {
+    auto compute_optimal_layout_info = [&]() {
       std::unique_ptr<ControlFlowGraph> clone_cfg = cfg_builder.Clone().Build();
-      std::vector<FunctionChainInfo> code_layout_result =
+      SectionLayoutInfo code_layout_result =
           CodeLayout(code_layout_params, {clone_cfg.get()},
                      /*initial_chains=*/{})
-              .OrderAll();
-      CHECK_EQ(code_layout_result.size(), 1);
-      return code_layout_result.front();
+              .GenerateLayout();
+      CHECK_EQ(code_layout_result.layouts_by_function_index.size(), 1);
+      return code_layout_result.layouts_by_function_index.begin()->second;
     };
-    std::optional<propeller::FunctionChainInfo> optimal_chain_info;
+    std::optional<propeller::FunctionLayoutInfo> optimal_layout_info;
     auto& current_cfg_changes = cfg_changes_by_function_index[function_index];
 
     for (EvaluatedPathCloning& cloning : clonings) {
@@ -270,20 +271,20 @@ CloneApplicatorStats ApplyClonings(
         total_score_gain += *cloning.score;
         cfg_builder.AddCfgChange(cloning.cfg_change);
         current_cfg_changes.push_back(std::move(cloning.cfg_change));
-        // Reset `optimal_chain_info` as the CFG has changed and it must be
+        // Reset `optimal_layout_info` as the CFG has changed and it must be
         // recomputed.
-        optimal_chain_info = std::nullopt;
+        optimal_layout_info = std::nullopt;
       };
       // Evaluate clonings again if any clonings have been applied as the score
       // may have been changed.
       if (!cfg_builder.cfg_changes().empty() || !cloning.score.has_value()) {
-        if (!optimal_chain_info.has_value())
-          optimal_chain_info = compute_optimal_chain_info();
+        if (!optimal_layout_info.has_value())
+          optimal_layout_info = compute_optimal_layout_info();
         absl::StatusOr<EvaluatedPathCloning> evaluated_cloning =
             EvaluateCloning(cfg_builder.Clone(), cloning.path_cloning,
                             code_layout_params, path_profile_options,
                             path_profile_options.min_final_cloning_score(),
-                            optimal_chain_info.value(), function_path_profile);
+                            optimal_layout_info.value(), function_path_profile);
         if (!evaluated_cloning.ok()) continue;
         register_cloning(std::move(*std::move(evaluated_cloning)));
       } else if (cloning.score <

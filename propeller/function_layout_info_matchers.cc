@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "propeller/function_chain_info_matchers.h"
+#include "propeller/function_layout_info_matchers.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "propeller/function_chain_info.h"
+#include "propeller/function_layout_info.h"
 #include "propeller/status_testing_macros.h"
 
 namespace propeller {

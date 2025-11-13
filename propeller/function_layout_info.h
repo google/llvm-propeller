@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef PROPELLER_FUNCTION_CHAIN_INFO_H_
-#define PROPELLER_FUNCTION_CHAIN_INFO_H_
+#ifndef PROPELLER_FUNCTION_LAYOUT_INFO_H_
+#define PROPELLER_FUNCTION_LAYOUT_INFO_H_
 
 #include <vector>
 
@@ -30,14 +30,15 @@ struct CFGScore {
   double inter_out_score = 0;
 };
 
-// This struct represents the layout information for one function, that is every
-// basic block chain and its layout index within the global ordering.
-struct FunctionChainInfo {
+// Contains layout information for a function.
+struct FunctionLayoutInfo {
+  // Represents a bundle of basic blocks that are laid out contiguously.
   struct BbBundle {
+    // IDs of the basic blocks in this bundle.
     std::vector<FullIntraCfgId> full_bb_ids;
   };
-  // This struct represents a chain of basic blocks (belong to the function
-  // associated with func_symbol) which are contiguous in the layout.
+  // Represents a chain of basic block bundles which are contiguous in the
+  // layout.
   struct BbChain {
     // Index of this basic block chain in the global layout (zero-based).
     unsigned layout_index;
@@ -73,9 +74,6 @@ struct FunctionChainInfo {
     }
   };
 
-  // Associated CFG's function_index.
-  int function_index = -1;
-
   // BB chains pertaining to this CFG.
   std::vector<BbChain> bb_chains = {};
 
@@ -90,4 +88,4 @@ struct FunctionChainInfo {
 };
 }  // namespace propeller
 
-#endif  // PROPELLER_FUNCTION_CHAIN_INFO_H_
+#endif  // PROPELLER_FUNCTION_LAYOUT_INFO_H_
