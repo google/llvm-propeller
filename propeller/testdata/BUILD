@@ -389,7 +389,9 @@ genrule(
     ],
     cmd = "$(CC) $(CC_FLAGS) -g -O2 -Wl,-build-id -pie -fbasic-block-address-map " +
           "-mllvm=-pgo-analysis-map=all $< -o $(RULEDIR)/sample_pgo_analysis_map.bin.gen",
-    tags = ["manual"],
+    tags = [
+        "manual",
+    ],
     toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
 
