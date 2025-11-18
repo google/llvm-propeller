@@ -16,6 +16,7 @@
 
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -51,10 +52,11 @@ using ::propeller_file::GetBinaryProto;
 
 // Determines the type of the provided input profiles, returning an error if
 // profile types are heterogeneous. For backwards compatibility reasons, assumes
-// that unspecified profile types are PERF_LBR.
-absl::StatusOr<ProfileType> GetProfileType(const PropellerOptions& opts) {
-  if (opts.input_profiles().empty())
-    return absl::InvalidArgumentError("no input profiles provided");
+// that unspecified profile types are PERF_LBR. Returns std::nullopt if there
+// are no input profiles.
+absl::StatusOr<std::optional<ProfileType>> GetBranchProfileType(
+    const PropellerOptions& opts) {
+  if (opts.input_profiles().empty()) return std::nullopt;
 
   absl::flat_hash_set<ProfileType> profile_types;
   absl::c_transform(
@@ -171,14 +173,19 @@ absl::Status GeneratePropellerProfiles(
 }  // namespace
 
 absl::Status GeneratePropellerProfiles(const PropellerOptions& opts) {
-  ASSIGN_OR_RETURN(ProfileType profile_type, GetProfileType(opts));
+  ASSIGN_OR_RETURN(std::optional<ProfileType> profile_type,
+                   GetBranchProfileType(opts));
   ASSIGN_OR_RETURN(std::unique_ptr<BinaryContent> binary_content,
                    GetBinaryContent(opts.binary_name()));
-  ASSIGN_OR_RETURN(std::unique_ptr<BranchAggregator> branch_aggregator,
-                   CreateBranchAggregator(profile_type, opts, *binary_content));
-  ASSIGN_OR_RETURN(
-      std::unique_ptr<PathProfileAggregator> path_profile_aggregator,
-      CreatePathProfileAggregator(profile_type, opts));
+  std::unique_ptr<BranchAggregator> branch_aggregator;
+  std::unique_ptr<PathProfileAggregator> path_profile_aggregator;
+  if (profile_type.has_value()) {
+    ASSIGN_OR_RETURN(
+        branch_aggregator,
+        CreateBranchAggregator(*profile_type, opts, *binary_content));
+    ASSIGN_OR_RETURN(path_profile_aggregator,
+                     CreatePathProfileAggregator(*profile_type, opts));
+  }
   return GeneratePropellerProfiles(opts, std::move(binary_content),
                                    std::move(branch_aggregator),
                                    std::move(path_profile_aggregator));

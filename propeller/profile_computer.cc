@@ -15,8 +15,8 @@
 #include "propeller/profile_computer.h"
 
 #include <cstdint>
-#include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,6 +25,7 @@
 #include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
 #include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -33,16 +34,22 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Object/ELFTypes.h"
 #include "propeller/addr2cu.h"
+#include "propeller/bb_handle.h"
 #include "propeller/binary_address_mapper.h"
 #include "propeller/binary_content.h"
 #include "propeller/branch_aggregation.h"
 #include "propeller/branch_aggregator.h"
+#include "propeller/cfg.h"
 #include "propeller/clone_applicator.h"
 #include "propeller/code_layout.h"
+#include "propeller/code_prefetch_parser.h"
 #include "propeller/file_perf_data_provider.h"
 #include "propeller/function_layout_info.h"
+#include "propeller/function_prefetch_info.h"
 #include "propeller/lbr_branch_aggregator.h"
 #include "propeller/path_node.h"
 #include "propeller/path_profile_aggregator.h"
@@ -50,6 +57,7 @@
 #include "propeller/perf_data_provider.h"
 #include "propeller/perf_lbr_aggregator.h"
 #include "propeller/profile.h"
+#include "propeller/program_cfg.h"
 #include "propeller/program_cfg_builder.h"
 #include "propeller/propeller_options.pb.h"
 #include "propeller/propeller_statistics.h"
@@ -61,6 +69,41 @@ using ::propeller::ApplyClonings;
 using ::propeller::ProgramPathProfile;
 
 namespace {
+
+// Assuming that the block is separated into subblocks by calls, this
+// function returns the index of the subblock (0-based) that contains the given
+// offset `bb_offset` in the basic block represented by `bb_entry`. Each
+// subblock starts from the end of the previous call instruction (or the
+// beginning of the basic block) to the end of the next call instruction (or the
+// end of the basic block).
+uint32_t GetSubblockIndex(const llvm::object::BBAddrMap::BBEntry& bb_entry,
+                          uint32_t bb_offset) {
+  return absl::c_upper_bound(bb_entry.CallsiteEndOffsets, bb_offset) -
+         bb_entry.CallsiteEndOffsets.begin();
+}
+
+struct BbHandleAndSubblockIndex {
+  BbHandle bb_handle;
+  uint32_t subblock_index;
+};
+
+// Returns the BbHandle and subblock index for the given address, or nullopt if
+// the address does not correspond to a basic block.
+std::optional<BbHandleAndSubblockIndex> GetBbHandleAndSubblockIndex(
+    const BinaryAddressMapper& binary_address_mapper, uint64_t address) {
+  std::optional<BbHandle> bb_handle =
+      binary_address_mapper.GetBbHandleUsingBinaryAddress(address,
+                                                          BranchDirection::kTo);
+  if (!bb_handle.has_value()) {
+    return std::nullopt;
+  }
+  uint32_t bb_offset = address - binary_address_mapper.GetAddress(*bb_handle);
+  const auto& bb_entry = binary_address_mapper.GetBBEntry(*bb_handle);
+  return BbHandleAndSubblockIndex{
+      .bb_handle = *bb_handle,
+      .subblock_index = GetSubblockIndex(bb_entry, bb_offset)};
+}
+
 // Evaluates if Propeller options contain profiles that are specified as
 // non-LBR.
 bool ContainsNonLbrProfile(const PropellerOptions& options) {
@@ -76,10 +119,49 @@ std::vector<std::string> ExtractProfileNames(const PropellerOptions& options) {
   std::vector<std::string> profile_names;
   profile_names.reserve(options.input_profiles_size());
 
-  absl::c_transform(options.input_profiles(), std::back_inserter(profile_names),
-                    [](const InputProfile& profile) { return profile.name(); });
-
+  for (const InputProfile& profile : options.input_profiles()) {
+    profile_names.push_back(profile.name());
+  }
   return profile_names;
+}
+
+// Generates function profile infos containing prefetch hints and targets.
+absl::flat_hash_map<int, FunctionPrefetchInfo> GeneratePrefetchByFunctionIndex(
+    const ProgramCfg& program_cfg,
+    const BinaryAddressMapper& binary_address_mapper,
+    absl::Span<const CodePrefetchDirective> code_prefetch_directives) {
+  absl::flat_hash_map<int, FunctionPrefetchInfo> function_prefetch_infos;
+
+  for (const CodePrefetchDirective& code_prefetch_directive :
+       code_prefetch_directives) {
+    std::optional<BbHandleAndSubblockIndex> site_info =
+        GetBbHandleAndSubblockIndex(binary_address_mapper,
+                                    code_prefetch_directive.prefetch_site);
+    std::optional<BbHandleAndSubblockIndex> target_info =
+        GetBbHandleAndSubblockIndex(binary_address_mapper,
+                                    code_prefetch_directive.prefetch_target);
+    if (!site_info.has_value() || !target_info.has_value()) {
+      continue;
+    }
+    function_prefetch_infos[site_info->bb_handle.function_index]
+        .prefetch_hints.push_back(FunctionPrefetchInfo::PrefetchHint{
+            .site_bb_id = static_cast<int32_t>(
+                binary_address_mapper.GetBBEntry(site_info->bb_handle).ID),
+            .site_callsite_index =
+                static_cast<int32_t>(site_info->subblock_index),
+            .target_function_index = target_info->bb_handle.function_index,
+            .target_bb_id = static_cast<int32_t>(
+                binary_address_mapper.GetBBEntry(target_info->bb_handle).ID),
+            .target_callsite_index =
+                static_cast<int32_t>(target_info->subblock_index)});
+    function_prefetch_infos[target_info->bb_handle.function_index]
+        .prefetch_targets.insert(FunctionPrefetchInfo::TargetBBInfo{
+            .bb_id = static_cast<int32_t>(
+                binary_address_mapper.GetBBEntry(target_info->bb_handle).ID),
+            .callsite_index =
+                static_cast<int32_t>(target_info->subblock_index)});
+  }
+  return function_prefetch_infos;
 }
 }  // namespace
 
@@ -96,6 +178,10 @@ absl::StatusOr<PropellerProfile> PropellerProfileComputer::ComputeProfile() && {
           GenerateLayoutBySection(*program_cfg_, options_.code_layout_params(),
                                   stats_.code_layout_stats);
 
+  absl::flat_hash_map<int, FunctionPrefetchInfo> function_prefetch_infos =
+      GeneratePrefetchByFunctionIndex(*program_cfg_, *binary_address_mapper_,
+                                      code_prefetch_directives_);
+
   absl::btree_map<llvm::StringRef, SectionProfileInfo> section_profile_infos;
 
   for (auto& [section_name, section_layout_info] :
@@ -106,6 +192,13 @@ absl::StatusOr<PropellerProfile> PropellerProfileComputer::ComputeProfile() && {
           .profile_infos_by_function_index[function_index]
           .layout_info = std::move(layout_info);
     }
+  }
+
+  for (auto& [function_index, prefetch_info] : function_prefetch_infos) {
+    section_profile_infos[program_cfg_->GetCfgByIndex(function_index)
+                              ->section_name()]
+        .profile_infos_by_function_index[function_index]
+        .prefetch_info = std::move(prefetch_info);
   }
 
   return PropellerProfile(
@@ -174,16 +267,30 @@ PropellerProfileComputer::Create(
 //   ConvertPerfDataToPathProfile to
 //      initialize `program_path_profile_`.
 absl::Status PropellerProfileComputer::InitializeProgramProfile() {
-  ASSIGN_OR_RETURN(absl::flat_hash_set<uint64_t> unique_addresses,
-                   branch_aggregator_->GetBranchEndpointAddresses());
+  absl::flat_hash_set<uint64_t> unique_addresses;
+  if (branch_aggregator_ != nullptr) {
+    ASSIGN_OR_RETURN(unique_addresses,
+                     branch_aggregator_->GetBranchEndpointAddresses());
+  }
+  if (!options_.prefetch_directives_path().empty()) {
+    ASSIGN_OR_RETURN(
+        code_prefetch_directives_,
+        ReadCodePrefetchDirectives(options_.prefetch_directives_path()));
+    for (const auto& code_prefetch_directive : code_prefetch_directives_) {
+      unique_addresses.insert(code_prefetch_directive.prefetch_site);
+      unique_addresses.insert(code_prefetch_directive.prefetch_target);
+    }
+  }
 
   ASSIGN_OR_RETURN(binary_address_mapper_,
                    BuildBinaryAddressMapper(options_, *binary_content_, stats_,
                                             &unique_addresses));
 
-  ASSIGN_OR_RETURN(
-      BranchAggregation branch_aggregation,
-      branch_aggregator_->Aggregate(*binary_address_mapper_, stats_));
+  BranchAggregation branch_aggregation;
+  if (branch_aggregator_ != nullptr) {
+    ASSIGN_OR_RETURN(branch_aggregation, branch_aggregator_->Aggregate(
+                                             *binary_address_mapper_, stats_));
+  }
 
   std::unique_ptr<Addr2Cu> addr2cu;
   if (options_.output_module_name()) {

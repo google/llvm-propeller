@@ -109,18 +109,73 @@ TEST(LlvmPropellerCfg, GetDotFormat) {
   cfgs.at(0)->WriteDotFormat(
       dot_format_os,
       // Assume the 0,1,3,2 layout.
-      {{{0, 0}, 1}, {{1, 0}, 2}, {{2, 0}, 4}, {{3, 0}, 3}});
+      {{{0, 0}, 1}, {{1, 0}, 2}, {{2, 0}, 4}, {{3, 0}, 3}}, {});
   EXPECT_EQ(dot_format_os.str(),
             "digraph {\n"
             "label=\"foo#0\"\n"
             "forcelabels=true;\n"
-            "0 [xlabel=\"10#16#0\", color = \"black\" ];\n"
-            "1 [xlabel=\"110#7#1\", color = \"black\" ];\n"
-            "2 [xlabel=\"0#10#2\", color = \"black\" ];\n"
-            "3 [xlabel=\"100#4#3\", color = \"black\" ];\n"
+            "rankdir=\"LR\";\n"
+            "0 [label=\"id: 0\\nindex: 0\\nfreq: 10\\nsize: 16\", color = "
+            "\"black\" ];\n"
+            "1 [label=\"id: 1\\nindex: 1\\nfreq: 110\\nsize: 7\", color = "
+            "\"black\" ];\n"
+            "3 [label=\"id: 3\\nindex: 3\\nfreq: 100\\nsize: 4\", color = "
+            "\"black\" ];\n"
             "0 -> 1[ label=\"B#10\", color =\"red\"];\n"
             "1 -> 3[ label=\"B#95\", color =\"red\"];\n"
             "3 -> 1[ label=\"B#100\", color =\"black\"];\n"
+            "}\n");
+}
+
+TEST(LlvmPropellerCfg, GetDotFormatWithPrefetchHints) {
+  absl::flat_hash_map<int, std::unique_ptr<ControlFlowGraph>> cfgs =
+      TestCfgBuilder(
+          {.cfg_args = {{".foo_section",
+                         0,
+                         "foo",
+                         {{0x1000, 0, 0x10},
+                          {0x1010, 1, 0x7},
+                          {0x1020, 2, 0xa},
+                          {0x102a, 3, 0x4}},
+                         {{0, 1, 10, CFGEdgeKind::kBranchOrFallthough},
+                          {1, 3, 95, CFGEdgeKind::kBranchOrFallthough},
+                          {3, 1, 100, CFGEdgeKind::kBranchOrFallthough}}}}})
+          .Build();
+
+  ASSERT_THAT(cfgs, UnorderedElementsAre(Key(0)));
+
+  std::stringstream dot_format_os;
+  cfgs.at(0)->WriteDotFormat(
+      dot_format_os,
+      // Assume the 0,1,3,2 layout.
+      {{{0, 0}, 1}, {{1, 0}, 2}, {{2, 0}, 4}, {{3, 0}, 3}},
+      {{.site_bb_id = 0,
+        .site_callsite_index = 0,
+        .target_function_index = 0,
+        .target_bb_id = 2,
+        .target_callsite_index = 0},
+       {.site_bb_id = 1,
+        .site_callsite_index = 0,
+        .target_function_index = 0,
+        .target_bb_id = 3,
+        .target_callsite_index = 0}});
+  EXPECT_EQ(dot_format_os.str(),
+            "digraph {\n"
+            "label=\"foo#0\"\n"
+            "forcelabels=true;\n"
+            "rankdir=\"LR\";\n"
+            "0 [label=\"id: 0\\nindex: 0\\nfreq: 10\\nsize: 16\", color = "
+            "\"black\" ];\n"
+            "1 [label=\"id: 1\\nindex: 1\\nfreq: 110\\nsize: 7\", color = "
+            "\"black\" ];\n"
+            "3 [label=\"id: 3\\nindex: 3\\nfreq: 100\\nsize: 4\", color = "
+            "\"black\" ];\n"
+            "0 -> 1[ label=\"B#10\", color =\"red\"];\n"
+            "1 -> 3[ label=\"B#95\", color =\"red\"];\n"
+            "3 -> 1[ label=\"B#100\", color =\"black\"];\n"
+            "2 [style = \"dashed\"];\n"
+            "0 -> 2 [label = \"prefetch\", color = \"blue\", penwidth=3];\n"
+            "1 -> 3 [label = \"prefetch\", color = \"blue\", penwidth=3];\n"
             "}\n");
 }
 

@@ -41,7 +41,9 @@
 #include "propeller/cfg_id.h"
 #include "propeller/cfg_node.h"
 #include "propeller/function_layout_info.h"
+#include "propeller/function_prefetch_info.h"
 #include "propeller/profile.h"
+#include "propeller/program_cfg.h"
 #include "propeller/propeller_options.pb.h"
 
 namespace propeller {
@@ -80,6 +82,8 @@ void DumpCfgs(const PropellerProfile& profile,
                    << func_profile_info.layout_info.original_score.intra_score
                    << " "
                    << func_profile_info.layout_info.optimized_score.intra_score
+                   << " "
+                   << func_profile_info.prefetch_info.prefetch_hints.size()
                    << "\n";
 
       // Use the address of the function as the CFG filename for uniqueness.
@@ -103,7 +107,8 @@ void DumpCfgs(const PropellerProfile& profile,
           bbs += bb_bundle.full_bb_ids.size();
         }
       }
-      cfg->WriteDotFormat(cfg_dump_os, layout_index_map);
+      cfg->WriteDotFormat(cfg_dump_os, layout_index_map,
+                          func_profile_info.prefetch_info.prefetch_hints);
     }
   }
 }
@@ -133,6 +138,25 @@ void WriteCfgProfile(const ControlFlowGraph& cfg, std::ofstream& out) {
 }
 }  // namespace
 
+void PropellerProfileWriter::WritePrefetchInfo(
+    const FunctionPrefetchInfo& prefetch_info, const ProgramCfg& program_cfg,
+    std::ofstream& out) const {
+  for (const FunctionPrefetchInfo::PrefetchHint& prefetch_hint :
+       prefetch_info.prefetch_hints) {
+    out << profile_encoding_.prefetch_hint_specifier << prefetch_hint.site_bb_id
+        << "," << prefetch_hint.site_callsite_index << " "
+        << program_cfg.GetCfgByIndex(prefetch_hint.target_function_index)
+               ->GetPrimaryName()
+               .str()
+        << "," << prefetch_hint.target_bb_id << ","
+        << prefetch_hint.target_callsite_index << "\n";
+  }
+  for (const auto& prefetch_target : prefetch_info.prefetch_targets) {
+    out << profile_encoding_.prefetch_target_specifier << prefetch_target.bb_id
+        << "," << prefetch_target.callsite_index << "\n";
+  }
+}
+
 void PropellerProfileWriter::Write(const PropellerProfile& profile) const {
   std::ofstream cc_profile_os(options_.cluster_out_name());
   std::ofstream ld_profile_os(options_.symbol_order_out_name());
@@ -140,6 +164,7 @@ void PropellerProfileWriter::Write(const PropellerProfile& profile) const {
     cc_profile_os << profile_encoding_.version_specifier << "\n";
   }
   cc_profile_os << "#Profiled binary build ID: " << profile.build_id << "\n";
+  absl::flat_hash_set<int> functions_with_layout;
   // TODO(b/160339651): Remove this in favour of structured format in LLVM code.
   for (const auto& [section_name, section_profile_info] :
        profile.profile_infos_by_section_name) {
@@ -151,6 +176,7 @@ void PropellerProfileWriter::Write(const PropellerProfile& profile) const {
     for (const auto& [function_index, func_profile_info] :
          section_profile_info.profile_infos_by_function_index) {
       if (func_profile_info.layout_info.bb_chains.empty()) continue;
+      functions_with_layout.insert(function_index);
       ++total_hot_functions;
       total_chains += func_profile_info.layout_info.bb_chains.size();
     }
@@ -242,6 +268,9 @@ void PropellerProfileWriter::Write(const PropellerProfile& profile) const {
         cold_symbol_order[func_profile_info.layout_info
                               .cold_chain_layout_index] = function_index;
       }
+
+      WritePrefetchInfo(func_profile_info.prefetch_info, *profile.program_cfg,
+                        cc_profile_os);
 
       // Dump the edge profile for this CFG if requested.
       if (options_.write_cfg_profile()) WriteCfgProfile(*cfg, cc_profile_os);

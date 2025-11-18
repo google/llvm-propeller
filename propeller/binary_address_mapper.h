@@ -40,7 +40,6 @@
 #include "propeller/propeller_statistics.h"
 
 namespace propeller {
-
 enum class BranchDirection { kFrom, kTo };
 
 // Represents either a branch from `from_bb` to `to_bb`, or a callsite calling

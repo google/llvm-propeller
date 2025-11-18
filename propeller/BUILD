@@ -403,6 +403,7 @@ cc_library(
         ":cfg_edge_kind",
         ":cfg_id",
         ":cfg_node",
+        ":function_prefetch_info",
         ":path_node",
         "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/base:core_headers",
@@ -640,10 +641,19 @@ cc_library(
 )
 
 cc_library(
+    name = "function_prefetch_info",
+    hdrs = ["function_prefetch_info.h"],
+    deps = [
+        "@abseil-cpp//absl/container:btree",
+    ],
+)
+
+cc_library(
     name = "profile",
     hdrs = ["profile.h"],
     deps = [
         ":function_layout_info",
+        ":function_prefetch_info",
         ":program_cfg",
         ":propeller_statistics",
         "@abseil-cpp//absl/container:btree",
@@ -661,7 +671,9 @@ cc_library(
         ":cfg_id",
         ":cfg_node",
         ":function_layout_info",
+        ":function_prefetch_info",
         ":profile",
+        ":program_cfg",
         ":propeller_options_cc_proto",
         "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/container:flat_hash_map",
@@ -670,7 +682,6 @@ cc_library(
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/strings:str_format",
-        "@abseil-cpp//absl/types:span",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -714,6 +725,7 @@ cc_library(
         ":propeller_statistics",
         ":resolve_mmap_name",
         ":status_macros",
+        "@abseil-cpp//absl/base:nullability",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/log",
         "@abseil-cpp//absl/status",
@@ -878,6 +890,7 @@ cc_library(
         ":propeller_options_cc_proto",
         ":resolve_mmap_name",
         ":status_macros",
+        "@abseil-cpp//absl/base:nullability",
         "@abseil-cpp//absl/functional:bind_front",
         "@abseil-cpp//absl/log",
         "@abseil-cpp//absl/log:vlog_is_on",
@@ -891,14 +904,18 @@ cc_library(
     hdrs = ["profile_computer.h"],
     deps = [
         ":addr2cu",
+        ":bb_handle",
         ":binary_address_mapper",
         ":binary_content",
         ":branch_aggregation",
         ":branch_aggregator",
+        ":cfg",
         ":clone_applicator",
         ":code_layout",
+        ":code_prefetch_parser",
         ":file_perf_data_provider",
         ":function_layout_info",
+        ":function_prefetch_info",
         ":lbr_branch_aggregator",
         ":path_node",
         ":path_profile_aggregator",
@@ -915,6 +932,7 @@ cc_library(
         "@abseil-cpp//absl/base:core_headers",
         "@abseil-cpp//absl/base:nullability",
         "@abseil-cpp//absl/container:btree",
+        "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/log",
         "@abseil-cpp//absl/log:check",
@@ -923,7 +941,21 @@ cc_library(
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings:str_format",
         "@abseil-cpp//absl/strings:string_view",
+        "@abseil-cpp//absl/types:span",
+        "@llvm-project//llvm:Object",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "code_prefetch_parser",
+    srcs = ["code_prefetch_parser.cc"],
+    hdrs = ["code_prefetch_parser.h"],
+    deps = [
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:string_view",
     ],
 )
 
@@ -976,18 +1008,14 @@ cc_binary(
     name = "generate_propeller_profiles",
     srcs = ["generate_propeller_profiles.cc"],
     deps = [
-        ":file_helpers",
         ":profile_generator",
         ":propeller_options_cc_proto",
-        ":status_macros",
         ":text_proto_flag",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/flags:flag",
         "@abseil-cpp//absl/flags:parse",
         "@abseil-cpp//absl/flags:usage",
-        "@abseil-cpp//absl/log",
         "@abseil-cpp//absl/log:check",
-        "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/strings:string_view",
     ],
@@ -1148,6 +1176,23 @@ cc_test(
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:status_matchers",
         "@abseil-cpp//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "code_prefetch_parser_test",
+    srcs = ["code_prefetch_parser_test.cc"],
+    data = [
+        "//propeller/testdata/prefetch_parsing:prefetch_parsing_test_files",
+    ],
+    deps = [
+        ":code_prefetch_parser",
+        ":status_testing_macros",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:status_matchers",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1656,10 +1701,13 @@ cc_test(
         "//propeller/testdata:bimodal_sample_mfs.cloning.ld_profile.txt",
         "//propeller/testdata:bimodal_sample_mfs.ld_profile.txt",
         "//propeller/testdata:bimodal_sample_v2.cloning_cc_profile.txt",
+        "//propeller/testdata:propeller_sample.prefetch.txt",
         "//propeller/testdata:sample.arm.bin",
         "//propeller/testdata:sample.bin",
         "//propeller/testdata:sample_cc_directives.arm.golden.txt",
         "//propeller/testdata:sample_cc_directives.golden.txt",
+        "//propeller/testdata:sample_cc_directives.prefetch.golden.txt",
+        "//propeller/testdata:sample_cc_directives.prefetchonly.golden.txt",
         "//propeller/testdata:sample_cc_directives.v0.golden.txt",
         "//propeller/testdata:sample_ld_directives.arm.golden.txt",
         "//propeller/testdata:sample_ld_directives.golden.txt",
@@ -1669,6 +1717,7 @@ cc_test(
         "//propeller/testdata:sample_split_only_cc_directives.golden.txt",
         "//propeller/testdata:sample_split_only_ld_directives.golden.txt",
         "//propeller/testdata:sample_verbose_cc_directives.golden.txt",
+        "//propeller/testdata:sample_with_callsites.bin",
     ],
     deps = [
         ":file_helpers",

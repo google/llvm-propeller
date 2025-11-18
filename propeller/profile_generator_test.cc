@@ -67,6 +67,12 @@ struct GeneratePropellerProfileTestCase {
   bool ignore_comment_lines_in_cc_profile = true;
 };
 
+PropellerOptions GetOptionsWithPrefetchPath(absl::string_view prefetch_path) {
+  PropellerOptions options;
+  options.set_prefetch_directives_path(prefetch_path);
+  return options;
+};
+
 TEST(GeneratePropellerProfiles, UsesPassedProvider) {
   PropellerOptions options;
   options.set_binary_name(absl::StrCat(::testing::SrcDir(),

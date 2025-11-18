@@ -55,6 +55,7 @@ using ::testing::AllOf;
 using ::testing::Contains;
 using ::testing::ElementsAre;
 using ::testing::Eq;
+using ::testing::ExplainMatchResult;
 using ::testing::Gt;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;

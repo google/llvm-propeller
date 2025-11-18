@@ -18,6 +18,7 @@
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
@@ -26,6 +27,7 @@
 #include "propeller/binary_address_mapper.h"
 #include "propeller/binary_content.h"
 #include "propeller/branch_aggregator.h"
+#include "propeller/code_prefetch_parser.h"
 #include "propeller/path_node.h"
 #include "propeller/path_profile_aggregator.h"
 #include "propeller/perf_data_provider.h"
@@ -67,7 +69,7 @@ class PropellerProfileComputer {
       const PropellerOptions& options,
       ABSL_ATTRIBUTE_LIFETIME_BOUND const BinaryContent* absl_nonnull
           binary_content,
-      std::unique_ptr<BranchAggregator> branch_aggregator,
+      absl_nullable std::unique_ptr<BranchAggregator> branch_aggregator,
       std::unique_ptr<PathProfileAggregator> path_profile_aggregator = nullptr);
 
   // Returns the propeller profile.
@@ -91,7 +93,7 @@ class PropellerProfileComputer {
       const PropellerOptions& options,
       ABSL_ATTRIBUTE_LIFETIME_BOUND const BinaryContent* absl_nonnull
           binary_content,
-      std::unique_ptr<BranchAggregator> branch_aggregator,
+      absl_nullable std::unique_ptr<BranchAggregator> branch_aggregator,
       std::unique_ptr<PathProfileAggregator> path_profile_aggregator)
       : options_(options),
         branch_aggregator_(std::move(branch_aggregator)),
@@ -108,11 +110,12 @@ class PropellerProfileComputer {
   absl::Status InitializeProgramProfile();
 
   PropellerOptions options_;
-  std::unique_ptr<BranchAggregator> branch_aggregator_;
+  absl_nullable std::unique_ptr<BranchAggregator> branch_aggregator_;
   absl_nullable std::unique_ptr<PathProfileAggregator> path_profile_aggregator_;
   const BinaryContent* absl_nonnull binary_content_;
   PropellerStats stats_;
   std::unique_ptr<BinaryAddressMapper> binary_address_mapper_;
+  std::vector<CodePrefetchDirective> code_prefetch_directives_;
   std::unique_ptr<ProgramCfg> program_cfg_;
   std::optional<ProgramPathProfile> program_path_profile_;
 };

@@ -49,6 +49,7 @@ exports_files([
     "loop_no_entry_no_exit.protobuf",
     "multiple_cold_blocks.protobuf",
     "nested_loop.protobuf",
+    "propeller_sample.prefetch.txt",
     "propeller_sample.protobuf",
     "propeller_sample_1.bin",
     "propeller_sample_1_no_buildid.bin",  # propeller_sample_1.bin built without -Wl,-build-id.
@@ -61,6 +62,8 @@ exports_files([
     "sample_cc_directives.arm.golden.txt",
     "sample_cc_directives.cloning.golden.txt",
     "sample_cc_directives.golden.txt",
+    "sample_cc_directives.prefetch.golden.txt",
+    "sample_cc_directives.prefetchonly.golden.txt",
     "sample_cc_directives.v0.golden.txt",
     "sample_different_buildid.bin",
     "sample_ld_directives.arm.golden.txt",

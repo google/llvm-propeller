@@ -18,6 +18,7 @@
 #include <memory>
 #include <utility>
 
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "propeller/binary_address_mapper.h"
 #include "propeller/binary_content.h"
@@ -53,7 +54,7 @@ class PerfDataPathProfileAggregator : public PathProfileAggregator {
 
  private:
   const PropellerOptions& propeller_options_;
-  std::unique_ptr<PerfDataProvider> perf_data_provider_;
+  absl_nonnull std::unique_ptr<PerfDataProvider> perf_data_provider_;
 };
 
 }  // namespace propeller

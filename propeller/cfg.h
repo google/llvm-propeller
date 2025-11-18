@@ -38,6 +38,7 @@
 #include "propeller/cfg_edge_kind.h"
 #include "propeller/cfg_id.h"
 #include "propeller/cfg_node.h"
+#include "propeller/function_prefetch_info.h"
 #include "propeller/path_node.h"
 
 namespace propeller {
@@ -350,10 +351,14 @@ class ControlFlowGraph {
   // Writes the dot format of CFG into the given stream. `layout_index_map`
   // specifies a layout by mapping basic block intra_cfg_id to their positions
   // in the layout. Fall-through edges will be colored differently
-  // (red) in the dot format. `layout_indexx_map` can be a partial map.
+  // (red) in the dot format. `layout_index_map` can be a partial map. If
+  // `prefetch_hints` is not empty, then prefetch directives will be visualized
+  // in the dot format.
   void WriteDotFormat(
       std::ostream& os,
-      const absl::flat_hash_map<IntraCfgId, int>& layout_index_map) const;
+      const absl::flat_hash_map<IntraCfgId, int>& layout_index_map,
+      absl::Span<const FunctionPrefetchInfo::PrefetchHint> prefetch_hints)
+      const;
 
   // Returns the bb_indexes of hot join nodes in this CFG. These are nodes which
   // have a frequency of at least `hot_node_frequency_threshold` and at least

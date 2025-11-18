@@ -21,14 +21,16 @@
 #include "absl/container/btree_map.h"
 #include "llvm/ADT/StringRef.h"
 #include "propeller/function_layout_info.h"
+#include "propeller/function_prefetch_info.h"
 #include "propeller/program_cfg.h"
 #include "propeller/propeller_statistics.h"
 
 namespace propeller {
 
-// Contains profile information for a function.
+// Contains layout and prefetch information for a function.
 struct FunctionProfileInfo {
   FunctionLayoutInfo layout_info;
+  FunctionPrefetchInfo prefetch_info;
 };
 
 // Contains profile information for functions in a section.

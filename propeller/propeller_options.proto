@@ -33,7 +33,7 @@ message InputProfile {
   ProfileType type = 2;
 }
 
-// Next Available: 17.
+// Next Available: 18.
 message PropellerOptions {
   // binary file name.
   string binary_name = 1;
@@ -76,6 +76,9 @@ message PropellerOptions {
 
   // Version of profile to output in `cluster_out_name`.
   ClusterEncodingVersion cluster_out_version = 13 [default = LATEST];
+
+  // Path to a file containing prefetch directives.
+  string prefetch_directives_path = 17;
 
   // The profiles to be used for generating a Propeller profile.
   repeated InputProfile input_profiles = 14;

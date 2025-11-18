@@ -18,6 +18,7 @@
 #include <memory>
 #include <utility>
 
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "propeller/binary_content.h"
 #include "propeller/lbr_aggregation.h"
@@ -53,7 +54,7 @@ class PerfLbrAggregator : public LbrAggregator {
       const LbrAggregation& lbr_aggregation,
       const BinaryContent& binary_content);
 
-  std::unique_ptr<PerfDataProvider> perf_data_provider_;
+  absl_nonnull std::unique_ptr<PerfDataProvider> perf_data_provider_;
 };
 
 }  // namespace propeller

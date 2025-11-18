@@ -1,0 +1,14 @@
+v1
+f this_is_very_code
+i0,0 sample1_func,0,0
+f compute_flag
+i0,0 main,1,1
+t0,0
+f sample1_func
+i0,0 main,5,0
+t0,0
+f main
+i5,0 compute_flag,0,0
+i4,1 main,5,0
+t1,1
+t5,0

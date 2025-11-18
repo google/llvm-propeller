@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <memory>
 #include <ostream>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -25,11 +26,13 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "propeller/cfg_edge.h"
 #include "propeller/cfg_edge_kind.h"
 #include "propeller/cfg_id.h"
 #include "propeller/cfg_node.h"
+#include "propeller/function_prefetch_info.h"
 #include "propeller/path_node.h"
 
 namespace propeller {
@@ -88,15 +91,19 @@ CFGEdge* ControlFlowGraph::CreateEdge(CFGNode* from, CFGNode* to, int weight,
 
 void ControlFlowGraph::WriteDotFormat(
     std::ostream& os,
-    const absl::flat_hash_map<IntraCfgId, int>& layout_index_map) const {
+    const absl::flat_hash_map<IntraCfgId, int>& layout_index_map,
+    absl::Span<const FunctionPrefetchInfo::PrefetchHint> prefetch_hints) const {
+  absl::flat_hash_set<std::string> node_labels;
   os << "digraph {\n";
   os << "label=\"" << GetPrimaryName().str() << "#" << function_index_
      << "\"\n";
   os << "forcelabels=true;\n";
+  os << "rankdir=\"LR\";\n";
   for (const auto& node : nodes_) {
-    os << node->GetDotFormatLabel() << " [xlabel=\""
-       << node->CalculateFrequency() << "#" << node->size_ << "#"
-       << node->bb_index() << "\", color = \""
+    if (!node->has_edges()) continue;
+    node_labels.insert(node->GetDotFormatLabel());
+    os << node->GetDotFormatLabel() << " [label=\""
+       << node->GetExtendedDotFormatLabel() << "\", color = \""
        << (node->clone_number() ? "red" : "black") << "\" ];\n";
   }
   for (const auto& edge : intra_edges_) {
@@ -110,6 +117,32 @@ void ControlFlowGraph::WriteDotFormat(
        << edge->sink()->GetDotFormatLabel() << "[ label=\""
        << edge->GetDotFormatLabel() << "\", color =\""
        << (is_layout_edge ? "red" : "black") << "\"];\n";
+  }
+
+  auto get_inter_node_label = [&](int function_index, int bb_id) {
+    auto label = function_index == function_index_
+                     ? absl::StrCat(bb_id)
+                     : absl::StrCat("F", "_", function_index, "_", bb_id);
+    if (node_labels.emplace(label).second) {
+      os << label << " [style = \"dashed\"];\n";
+    }
+    return label;
+  };
+
+  for (const auto& edge : inter_edges_) {
+    if (edge->kind() != CFGEdgeKind::kCall) continue;
+    auto node_label = get_inter_node_label(edge->sink()->function_index(),
+                                           edge->sink()->bb_id());
+    os << edge->src()->GetDotFormatLabel() << " -> " << node_label
+       << "[ label=\"" << edge->GetDotFormatLabel()
+       << "\", color =\"black\"];\n";
+  }
+
+  for (const auto& prefetch_hint : prefetch_hints) {
+    auto label = get_inter_node_label(prefetch_hint.target_function_index,
+                                      prefetch_hint.target_bb_id);
+    os << prefetch_hint.site_bb_id << " -> " << label
+       << " [label = \"prefetch\", color = \"blue\", penwidth=3];\n";
   }
   os << "}\n";
 }

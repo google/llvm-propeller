@@ -29,6 +29,7 @@ add_library(propeller_lib OBJECT
   clone_applicator.cc
   code_layout.cc
   code_layout_scorer.cc
+  code_prefetch_parser.cc
   file_perf_data_provider.cc
   frequencies_branch_aggregator.cc
   lbr_branch_aggregator.cc
