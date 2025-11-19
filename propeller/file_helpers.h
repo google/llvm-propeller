@@ -28,6 +28,10 @@ namespace propeller_file {
 // Reads the contents of the file `path` and returns it as a string.
 absl::StatusOr<std::string> GetContents(absl::string_view path);
 
+// Writes the given `contents` to the file `path`, overwriting any existing
+// file.
+absl::Status SetContents(absl::string_view path, absl::string_view contents);
+
 // Reads the contents of the file `path` and returns it as a string, ignoring
 // lines starting with '#'.
 absl::StatusOr<std::string> GetContentsIgnoringCommentLines(

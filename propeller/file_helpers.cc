@@ -44,6 +44,20 @@ absl::StatusOr<std::string> GetContents(absl::string_view path) {
   return stringstream.str();
 }
 
+absl::Status SetContents(absl::string_view path, absl::string_view contents) {
+  std::ofstream filestream((std::string(path)), std::ios_base::binary);
+  if (!filestream) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "Failed to open file: ", path, ". State: ", filestream.rdstate()));
+  }
+
+  filestream << contents;
+  if (filestream.fail() || filestream.bad()) {
+    return absl::UnknownError(absl::StrCat("Failed to write to file: ", path));
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::string> GetContentsIgnoringCommentLines(
     absl::string_view path) {
   // Open the file in binary mode if it exists.

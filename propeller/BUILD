@@ -1047,6 +1047,18 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "file_helpers_test",
+    srcs = ["file_helpers_test.cc"],
+    deps = [
+        ":file_helpers",
+        ":status_testing_macros",
+        "@abseil-cpp//absl/status:status_matchers",
+        "@abseil-cpp//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "protocol_buffer_matchers",
     testonly = True,
