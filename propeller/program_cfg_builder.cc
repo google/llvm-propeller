@@ -84,7 +84,7 @@ absl::StatusOr<std::unique_ptr<ProgramCfg>> ProgramCfgBuilder::Build(
       if (res.ok()) module_name = llvm::StringRef(res->data(), res->size());
     }
 
-    CHECK(!func_bb_addr_map.getBBEntries().empty());
+    CHECK_NE(func_bb_addr_map.getNumBBEntries(), 0);
     // Skip functions which already have a CFG created for them.
     if (cfgs_.contains(func_index)) continue;
 
