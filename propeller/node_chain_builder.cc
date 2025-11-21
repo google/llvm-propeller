@@ -232,11 +232,6 @@ void NodeChainBuilder::InitNodeChains() {
       };
 
   for (const ControlFlowGraph* cfg : cfgs_) {
-    if (!cfg->is_hot()) {
-      LOG(INFO) << "Function is not hot: \"" << cfg->GetPrimaryName().str()
-                << "\".";
-      continue;
-    }
     auto it = initial_chains_.find(cfg->function_index());
     const std::vector<FunctionLayoutInfo::BbChain>& cfg_initial_chains =
         it != initial_chains_.end()
@@ -548,11 +543,9 @@ void NodeChainBuilder::UpdateAssembliesAfterMerge(NodeChain& kept_chain,
 // function.
 void NodeChainBuilder::CoalesceChains() {
   CHECK_EQ(cfgs_.size(), 1);
-  if (chains_.empty()) {
-    LOG(WARNING) << "Coalescing for function: " << cfgs_[0]->function_index()
-                 << " no chains.";
-    return;
-  }
+  CHECK(!chains_.empty()) << "Coalescing for function "
+                          << cfgs_[0]->GetPrimaryName().str()
+                          << " with no chains.";
   std::vector<NodeChain*> chain_order;
   chain_order.reserve(chains_.size());
   for (auto& [chain_id, chain] : chains_) chain_order.push_back(chain.get());
