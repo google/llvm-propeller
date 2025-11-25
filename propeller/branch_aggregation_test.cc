@@ -14,8 +14,12 @@
 
 #include "propeller/branch_aggregation.h"
 
+#include <cstdint>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "propeller/status_testing_macros.h"
 
 namespace propeller {
@@ -24,8 +28,11 @@ namespace {
 using ::testing::UnorderedElementsAre;
 
 TEST(BranchAggregation, GetNumberOfBranchCounters) {
-  EXPECT_EQ((BranchAggregation{.branch_counters = {{{.from = 1, .to = 2}, 3},
-                                                   {{.from = 3, .to = 4}, 5}}}
+  EXPECT_EQ((BranchAggregation{
+                .branch_counters = {{{.from = 1, .to = 2}, 3},
+                                    {{.from = 3, .to = 4}, 5}},
+                .fallthrough_counters =
+                    llvm::DenseMap<BinaryAddressFallthrough, int64_t>()}
                  .GetNumberOfBranchCounters()),
             8);
 }

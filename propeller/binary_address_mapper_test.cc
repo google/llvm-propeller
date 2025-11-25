@@ -22,13 +22,13 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ELFTypes.h"
 #include "propeller/bb_handle.h"
@@ -86,9 +86,9 @@ std::string GetPropellerTestDataFilePath(absl::string_view filename) {
   return testdata_filepath;
 }
 
-static absl::flat_hash_map<llvm::StringRef, BBAddrMap>
-GetBBAddrMapByFunctionName(const BinaryAddressMapper& binary_address_mapper) {
-  absl::flat_hash_map<llvm::StringRef, BBAddrMap> bb_addr_map_by_func_name;
+static llvm::DenseMap<llvm::StringRef, BBAddrMap> GetBBAddrMapByFunctionName(
+    const BinaryAddressMapper& binary_address_mapper) {
+  llvm::DenseMap<llvm::StringRef, BBAddrMap> bb_addr_map_by_func_name;
   for (const auto& [function_index, symbol_info] :
        binary_address_mapper.symbol_info_map()) {
     for (llvm::StringRef alias : symbol_info.aliases)
@@ -407,9 +407,8 @@ TEST(BinaryAddressMapper, CheckNoHotFunctions) {
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BinaryContent> binary_content,
       GetBinaryContent(GetPropellerTestDataFilePath("sample_section.bin")));
-  absl::flat_hash_set<uint64_t> hot_addresses = {
-      // call from main to compute_flag.
-      0x201900, 0x201870};
+  llvm::DenseSet<uint64_t> hot_addresses = {// call from main to compute_flag.
+                                            0x201900, 0x201870};
 
   PropellerStats stats;
   PropellerOptions options;

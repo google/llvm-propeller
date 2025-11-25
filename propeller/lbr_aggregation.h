@@ -18,7 +18,7 @@
 #include <cstdint>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
+#include "llvm/ADT/DenseMap.h"
 #include "propeller/binary_address_branch.h"
 
 namespace propeller {
@@ -40,13 +40,13 @@ struct LbrAggregation {
   }
 
   // A count of the number of times each branch was taken.
-  absl::flat_hash_map<BinaryAddressBranch, int64_t> branch_counters;
+  llvm::DenseMap<BinaryAddressBranch, int64_t> branch_counters;
   // A count of the number of times each fallthrough range (a fully-closed
   // interval) was serially taken. Given an instruction at binary address
   // `addr`, we can infer that the number of times the instruction was executed
   // is equal to the sum of counts for every fallthrough range that contains
   // `addr`.
-  absl::flat_hash_map<BinaryAddressFallthrough, int64_t> fallthrough_counters;
+  llvm::DenseMap<BinaryAddressFallthrough, int64_t> fallthrough_counters;
 };
 
 }  // namespace propeller
