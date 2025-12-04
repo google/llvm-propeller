@@ -1406,7 +1406,7 @@ TEST(CodeLayoutTest, BuildClusters) {
 
   // Verify that the input to the code under test (BuildClusters) is as
   // expected.
-  CHECK_EQ(built_chains.size(), 3);
+  CHECK_EQ(built_chains.size(), 4);
   // Chain for function foo.
   CHECK(GetOrderedNodeIds(*built_chains[0]) ==
         std::vector<InterCfgId>({{0, {0, 0}}, {0, {2, 0}}, {0, {1, 0}}}));
@@ -1414,8 +1414,12 @@ TEST(CodeLayoutTest, BuildClusters) {
   CHECK(GetOrderedNodeIds(*built_chains[1]) ==
         std::vector<InterCfgId>(
             {{1, {0, 0}}, {1, {1, 0}}, {1, {3, 0}}, {1, {2, 0}}, {1, {4, 0}}}));
-  // Chain for function qux.
+  // Chain for function baz. Baz is cold, but it should still be present in the
+  // output chains.
   CHECK(GetOrderedNodeIds(*built_chains[2]) ==
+        std::vector<InterCfgId>({{4, {0, 0}}}));
+  // Chain for function qux.
+  CHECK(GetOrderedNodeIds(*built_chains[3]) ==
         std::vector<InterCfgId>({{100, {0, 0}}}));
 
   // Verify the final clusters.
@@ -1434,7 +1438,9 @@ TEST(CodeLayoutTest, BuildClusters) {
           // Cluster containing the single block of qux, which won't
           // be merged with any other chain.
           Pointee(ResultOf(&GetOrderedNodeIds<ChainCluster>,
-                           ElementsAre(InterCfgId{100, {0, 0}})))));
+                           ElementsAre(InterCfgId{100, {0, 0}}))),
+          Pointee(ResultOf(&GetOrderedNodeIds<ChainCluster>,
+                           ElementsAre(InterCfgId{4, {0, 0}})))));
 }
 
 TEST(CodeLayoutTest, FindOptimalFallthroughNoSplitChains) {

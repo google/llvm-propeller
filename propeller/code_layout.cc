@@ -124,6 +124,7 @@ SectionLayoutInfo CodeLayout::GenerateLayout() {
                  std::back_inserter(built_chains));
   } else {
     for (auto* cfg : cfgs_) {
+      if (!cfg->is_hot()) continue;
       absl::c_move(NodeChainBuilder::CreateNodeChainBuilder<
                        NodeChainAssemblyIterativeQueue>(
                        code_layout_scorer_, {cfg}, initial_chains_, stats_)
