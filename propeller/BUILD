@@ -47,7 +47,10 @@ exports_files(["LICENSE"])
 cc_library(
     name = "binary_address_branch",
     hdrs = ["binary_address_branch.h"],
-    deps = ["@abseil-cpp//absl/strings:str_format"],
+    deps = [
+        "@abseil-cpp//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
+    ],
 )
 
 cc_library(
@@ -57,8 +60,7 @@ cc_library(
     deps = [
         ":binary_address_branch",
         "@abseil-cpp//absl/algorithm:container",
-        "@abseil-cpp//absl/container:flat_hash_map",
-        "@abseil-cpp//absl/container:flat_hash_set",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -70,8 +72,8 @@ cc_library(
         ":branch_aggregation",
         ":propeller_options_cc_proto",
         ":propeller_statistics",
-        "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/status:statusor",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -83,7 +85,7 @@ cc_library(
         ":binary_address_branch",
         ":branch_frequencies_cc_proto",
         "@abseil-cpp//absl/algorithm:container",
-        "@abseil-cpp//absl/container:flat_hash_map",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -129,7 +131,6 @@ cc_library(
     srcs = ["frequencies_branch_aggregator.cc"],
     hdrs = ["frequencies_branch_aggregator.h"],
     deps = [
-        ":bb_handle",
         ":binary_address_branch",
         ":binary_address_mapper",
         ":binary_content",
@@ -142,9 +143,8 @@ cc_library(
         ":status_macros",
         "@abseil-cpp//absl/base:core_headers",
         "@abseil-cpp//absl/container:btree",
-        "@abseil-cpp//absl/container:flat_hash_map",
-        "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/status:statusor",
+        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TargetParser",
     ],
 )
@@ -155,7 +155,7 @@ cc_library(
     deps = [
         ":binary_address_branch",
         "@abseil-cpp//absl/algorithm:container",
-        "@abseil-cpp//absl/container:flat_hash_map",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -189,8 +189,8 @@ cc_library(
         ":propeller_statistics",
         ":status_macros",
         "@abseil-cpp//absl/base:core_headers",
-        "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/status:statusor",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -505,8 +505,6 @@ cc_library(
         "@abseil-cpp//absl/base:core_headers",
         "@abseil-cpp//absl/base:nullability",
         "@abseil-cpp//absl/container:btree",
-        "@abseil-cpp//absl/container:flat_hash_map",
-        "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/log",
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/status:statusor",
@@ -932,8 +930,6 @@ cc_library(
         "@abseil-cpp//absl/base:core_headers",
         "@abseil-cpp//absl/base:nullability",
         "@abseil-cpp//absl/container:btree",
-        "@abseil-cpp//absl/container:flat_hash_map",
-        "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/log",
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/memory",
@@ -1216,6 +1212,7 @@ cc_test(
         ":branch_aggregation",
         ":status_testing_macros",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1296,11 +1293,11 @@ cc_test(
     deps = [
         ":binary_content",
         ":status_testing_macros",
-        "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/status:status_matchers",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1389,8 +1386,6 @@ cc_test(
         ":propeller_options_cc_proto",
         ":propeller_statistics",
         ":status_testing_macros",
-        "@abseil-cpp//absl/container:flat_hash_map",
-        "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/time",
         "@com_google_googletest//:gtest_main",
@@ -1416,6 +1411,7 @@ cc_test(
         "@abseil-cpp//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1436,6 +1432,7 @@ cc_test(
         "@abseil-cpp//absl/status:status_matchers",
         "@abseil-cpp//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1689,7 +1686,6 @@ cc_test(
         ":status_testing_macros",
         "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/container:btree",
-        "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:status_matchers",
@@ -1697,6 +1693,7 @@ cc_test(
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
 

@@ -19,8 +19,8 @@
 #include <memory>
 
 #include "absl/base/attributes.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "llvm/ADT/DenseSet.h"
 #include "propeller/binary_address_mapper.h"
 #include "propeller/binary_content.h"
 #include "propeller/branch_aggregation.h"
@@ -53,7 +53,7 @@ class LbrBranchAggregator : public BranchAggregator {
   LbrBranchAggregator(const LbrBranchAggregator&) = delete;
   LbrBranchAggregator& operator=(const LbrBranchAggregator&) = delete;
 
-  absl::StatusOr<absl::flat_hash_set<uint64_t>> GetBranchEndpointAddresses()
+  absl::StatusOr<llvm::DenseSet<uint64_t>> GetBranchEndpointAddresses()
       override;
 
   absl::StatusOr<BranchAggregation> Aggregate(

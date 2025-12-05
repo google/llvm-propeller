@@ -19,8 +19,8 @@
 #include <utility>
 
 #include "absl/base/attributes.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "llvm/ADT/DenseSet.h"
 #include "propeller/binary_address_mapper.h"
 #include "propeller/binary_content.h"
 #include "propeller/branch_aggregation.h"
@@ -46,18 +46,21 @@ LbrBranchAggregator::LbrBranchAggregator(
                                             .binary_content = binary_content}} {
 }
 
-absl::StatusOr<absl::flat_hash_set<uint64_t>>
+absl::StatusOr<llvm::DenseSet<uint64_t>>
 LbrBranchAggregator::GetBranchEndpointAddresses() {
   ASSIGN_OR_RETURN(const LbrAggregation& aggregation,
                    lazy_aggregator_.Evaluate().aggregation);
-  absl::flat_hash_set<uint64_t> unique_addresses;
+  llvm::DenseSet<uint64_t> unique_addresses;
   for (const auto& [branch, count] : aggregation.branch_counters) {
-    unique_addresses.insert(branch.from);
-    unique_addresses.insert(branch.to);
+    if (branch.from != kInvalidBinaryAddress)
+      unique_addresses.insert(branch.from);
+    if (branch.to != kInvalidBinaryAddress) unique_addresses.insert(branch.to);
   }
   for (const auto& [fallthrough, count] : aggregation.fallthrough_counters) {
-    unique_addresses.insert(fallthrough.from);
-    unique_addresses.insert(fallthrough.to);
+    if (fallthrough.from != kInvalidBinaryAddress)
+      unique_addresses.insert(fallthrough.from);
+    if (fallthrough.to != kInvalidBinaryAddress)
+      unique_addresses.insert(fallthrough.to);
   }
   return unique_addresses;
 }
