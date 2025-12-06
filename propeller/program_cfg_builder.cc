@@ -54,7 +54,7 @@ std::vector<std::unique_ptr<CFGNode>> CreateCfgNodes(
     for (const auto& bb_entry : bb_range.BBEntries) {
       nodes.push_back(std::make_unique<CFGNode>(
           bb_range.BaseAddress + bb_entry.Offset, bb_index, bb_entry.ID,
-          bb_entry.Size, bb_entry.MD, function_index));
+          bb_entry.Size, bb_entry.MD, bb_entry.Hash, function_index));
       ++bb_index;
     }
   }
