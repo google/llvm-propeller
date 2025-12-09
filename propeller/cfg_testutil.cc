@@ -38,7 +38,9 @@ std::vector<std::unique_ptr<CFGNode>> TestCfgBuilder::CreateNodesForCfg(
         // Use the same bb_index and bb_id for tests.
         /*bb_index=*/node_arg.bb_index,
         /*bb_id=*/node_arg.bb_index,
-        /*size=*/node_arg.size, /*metadata=*/node_arg.metadata,
+        /*size=*/node_arg.size, 
+        /*metadata=*/node_arg.metadata,
+        /*hash=*/node_arg.hash,
         /*function_index=*/function_index);
     CHECK(nodes_by_function_and_bb_index_[node->function_index()]
               .emplace(node->bb_index(), node.get())
