@@ -76,6 +76,9 @@ exports_files([
     "sample_split_only_cc_directives.golden.txt",
     "sample_split_only_ld_directives.golden.txt",
     "sample_verbose_cc_directives.golden.txt",
+    "sample_with_bb_hash.bin",
+    "sample_with_bb_hash.perfdata",
+    "sample_with_bb_hash_cc_directives.golden.txt",
     "sample_with_callsites.bin",  # generated using the "sample_bin" genrule.
     "sample_with_dropped_symbol.bin",
     "simple_conditionals_join.protobuf",
@@ -312,6 +315,27 @@ genrule(
           "cd $(RULEDIR) ; echo '1 2 3' > sample.scratch ; " +
           "/usr/bin/perf record -o sample.perfdata.gen -e cycles -b -- " +
           "sh -c 'cat sample.scratch | xargs -n 1 -P3 ./sample.bin.gen'",
+    tags = [
+        "manual",
+    ],
+    # Branch stack sampling (requested above with `-b`) is x86-only for now.
+    target_compatible_with = ["@platforms//cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
+    toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
+)
+
+# This rule is used to manually generate sample.bin with basic block hashes and its sample.perfdata.
+genrule(
+    name = "sample_with_bb_hash_bin",
+    srcs = ["sample.c"],
+    outs = [
+        "sample_with_bb_hash.bin.gen",
+        "sample_with_bb_hash.perfdata.gen",
+    ],
+    cmd = "$(CC) $(CC_FLAGS) -g -O2 -Wl,-build-id -pie -fbasic-block-address-map -mllvm -emit-bb-hash $< -o " +
+          "$(RULEDIR)/sample_with_bb_hash.bin.gen && " +
+          "cd $(RULEDIR) ; echo '1 2 3' > sample.scratch ; " +
+          "/usr/bin/perf record -o sample_with_bb_hash.perfdata.gen -e cycles -b -- " +
+          "sh -c 'cat sample.scratch | xargs -n 1 -P3 ./sample_with_bb_hash.bin.gen'",
     tags = [
         "manual",
     ],

@@ -1040,10 +1040,12 @@ cc_library(
     srcs = ["file_helpers.cc"],
     hdrs = ["file_helpers.h"],
     deps = [
+        "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/strings:string_view",
+        "@abseil-cpp//absl/types:span",
     ],
 )
 
@@ -1729,6 +1731,9 @@ cc_test(
         "//propeller/testdata:sample_split_only_cc_directives.golden.txt",
         "//propeller/testdata:sample_split_only_ld_directives.golden.txt",
         "//propeller/testdata:sample_verbose_cc_directives.golden.txt",
+        "//propeller/testdata:sample_with_bb_hash.bin",
+        "//propeller/testdata:sample_with_bb_hash.perfdata",
+        "//propeller/testdata:sample_with_bb_hash_cc_directives.golden.txt",
         "//propeller/testdata:sample_with_callsites.bin",
     ],
     deps = [

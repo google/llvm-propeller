@@ -19,10 +19,12 @@
 #include <sstream>
 #include <string>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 
 namespace propeller_file {
 
@@ -58,8 +60,9 @@ absl::Status SetContents(absl::string_view path, absl::string_view contents) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::string> GetContentsIgnoringCommentLines(
-    absl::string_view path) {
+absl::StatusOr<std::string> GetContentsIgnoringLines(
+    absl::string_view path,
+    absl::Span<const absl::string_view> ignored_line_prefixes) {
   // Open the file in binary mode if it exists.
   std::ifstream filestream((std::string(path)), std::ios_base::binary);
   if (!filestream) {
@@ -70,7 +73,12 @@ absl::StatusOr<std::string> GetContentsIgnoringCommentLines(
   std::string contents;
   std::string line;
   while (std::getline(filestream, line)) {
-    if (line.starts_with("#")) continue;
+    if (absl::c_any_of(ignored_line_prefixes,
+                       [&line](absl::string_view ignored_prefix) {
+                         return line.starts_with(ignored_prefix);
+                       })) {
+      continue;
+    }
     absl::StrAppend(&contents, line);
     // If a newline was encountered (eof was not reached), add a newline to the
     // output.

@@ -22,6 +22,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 
 namespace propeller_file {
 
@@ -33,9 +34,11 @@ absl::StatusOr<std::string> GetContents(absl::string_view path);
 absl::Status SetContents(absl::string_view path, absl::string_view contents);
 
 // Reads the contents of the file `path` and returns it as a string, ignoring
-// lines starting with '#'.
-absl::StatusOr<std::string> GetContentsIgnoringCommentLines(
-    absl::string_view path);
+// lines starting with any of the given prefixes. This is useful for ignoring
+// comments in the file.
+absl::StatusOr<std::string> GetContentsIgnoringLines(
+    absl::string_view path,
+    absl::Span<const absl::string_view> ignored_line_prefixes);
 
 // Reads a binary proto from the given path. The proto type is inferred from the
 // template parameter, which must be a proto message type.

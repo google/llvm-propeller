@@ -33,7 +33,7 @@ message CFGEdgePb {
 }
 
 // Basic blocks.
-// Next Available: 5.
+// Next Available: 6.
 message CFGNodePb {
   // Next available: 5
   message MetadataPb {
@@ -47,6 +47,7 @@ message CFGNodePb {
   repeated CFGEdgePb out_edges = 2;
   uint32 bb_id = 3;
   MetadataPb metadata = 4;
+  fixed64 hash = 5;
 }
 
 // Control flow graph where basic blocks are vertices and jumps are edges.

@@ -45,7 +45,7 @@ using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::propeller_file::GetContents;
-using ::propeller_file::GetContentsIgnoringCommentLines;
+using ::propeller_file::GetContentsIgnoringLines;
 using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::Not;
@@ -63,8 +63,9 @@ struct GeneratePropellerProfileTestCase {
   PropellerOptions options;
   std::string expected_cc_profile_path;
   std::string expected_ld_profile_path;
-  // If true, ignore lines starting with '#' in the actual cluster profile.
-  bool ignore_comment_lines_in_cc_profile = true;
+  // If true, ignore lines starting with '#' and 'g' in the actual cluster
+  // profile.
+  bool ignore_extra_lines_in_cc_profile = true;
 };
 
 PropellerOptions GetOptionsWithPrefetchPath(absl::string_view prefetch_path) {
@@ -95,6 +96,35 @@ TEST(GeneratePropellerProfiles, UsesPassedProvider) {
                            "/google3/devtools/crosstool/autofdo/testdata/"
                            "this_file_does_not_exist.perfdata")})),
       Not(IsOk()));
+}
+
+TEST(GeneratePropellerProfiles, GenerateProfileWithBBHash) {
+  PropellerOptions options;
+  options.set_binary_name(absl::StrCat(GetPropellerTestDataDirectoryPath(),
+                                       "sample_with_bb_hash.bin"));
+  std::string cc_directives_path =
+      absl::StrCat(::testing::TempDir(), "/cc_directives.txt");
+  options.set_cluster_out_name(cc_directives_path);
+  std::string ld_directives_path =
+      absl::StrCat(::testing::TempDir(), "/ld_directives.txt");
+  options.set_symbol_order_out_name(ld_directives_path);
+  options.set_write_bb_hash(true);
+
+  absl::Status status = GeneratePropellerProfiles(
+      options,
+      std::make_unique<GenericFilePerfDataProvider>(std::vector<std::string>{
+          absl::StrCat(GetPropellerTestDataDirectoryPath(),
+                       "sample_with_bb_hash.perfdata")}));
+
+  // The provider will success, because the file exists.
+  EXPECT_THAT(status, IsOk());
+
+  ASSERT_OK_AND_ASSIGN(std::string expected_cc_profile,
+                       GetContents(absl::StrCat(
+                           GetPropellerTestDataDirectoryPath(),
+                           "sample_with_bb_hash_cc_directives.golden.txt")));
+  EXPECT_THAT(GetContents(cc_directives_path),
+              IsOkAndHolds(Eq(expected_cc_profile)));
 }
 }  // namespace
 }  // namespace propeller
