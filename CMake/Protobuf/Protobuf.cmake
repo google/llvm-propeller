@@ -25,8 +25,7 @@ set(propeller_protobuf_version 33.1)
 # Declare and configure the external protobuf package.
 include(FetchContent)
 FetchContent_Declare(protobuf
-  GIT_REPOSITORY              "https://github.com/protocolbuffers/protobuf"
-  GIT_TAG                     "v${propeller_protobuf_version}"
+  URL                         "https://github.com/protocolbuffers/protobuf/releases/download/v${propeller_protobuf_version}/protobuf-${propeller_protobuf_version}.tar.gz"
 )
 
 set(protobuf_ABSL_PROVIDER "package" CACHE STRING "" FORCE)
