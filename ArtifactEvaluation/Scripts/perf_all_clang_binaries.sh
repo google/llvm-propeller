@@ -24,6 +24,8 @@ CLANG_VERSION=$(sed -Ene 's!^CLANG_EXECUTABLE_VERSION:STRING=(.*)$!\1!p' ${PATH_
 PATH_TO_PRISTINE_BASELINE_CLANG_BUILD=${BASE_DIR}/pristine_baseline_build
 PATH_TO_OPTIMIZED_PROPELLER_BUILD=${BASE_DIR}/optimized_propeller_build
 PATH_TO_INSTRUMENTED_BOLT_CLANG_BUILD=${BASE_DIR}/baseline_bolt_only_clang_build
+EVENTS=instructions,cycles,L1-icache-misses,iTLB-misses,cpu/event=0xc6,umask=1,frontend=1,name=FRONTEND_RETIRED.ANY_DSB_MISS/
+
 # Run comparison of baseline verus propeller optimized clang versus bolt
 # optimized clang
 cd ${BENCHMARKING_CLANG_BUILD}/symlink_to_clang_binary
@@ -32,7 +34,7 @@ ln -sf ${PATH_TO_PRISTINE_BASELINE_CLANG_BUILD}/bin/clang-${CLANG_VERSION} clang
 cd ..
 ninja clean
 echo "***********  BASELINE ***********"
-perf stat -r1 -e instructions,cycles,L1-icache-misses,iTLB-misses -- bash -c "ninja -j48 clang && ninja clean"
+perf stat -r1 -e $EVENTS -- bash -c "ninja -j48 clang && ninja clean"
 
 cd ${BENCHMARKING_CLANG_BUILD}/symlink_to_clang_binary
 ln -sf ${PATH_TO_OPTIMIZED_PROPELLER_BUILD}/bin/clang-${CLANG_VERSION} clang
@@ -40,7 +42,7 @@ ln -sf ${PATH_TO_OPTIMIZED_PROPELLER_BUILD}/bin/clang-${CLANG_VERSION} clang++
 cd ..
 ninja clean
 echo "***********  PROPELLER ***********"
-perf stat -r1 -e instructions,cycles,L1-icache-misses,iTLB-misses -- bash -c "ninja -j48 clang && ninja clean"
+perf stat -r1 -e $EVENTS -- bash -c "ninja -j48 clang && ninja clean"
 
 cd ${BENCHMARKING_CLANG_BUILD}/symlink_to_clang_binary
 ln -sf ${PATH_TO_INSTRUMENTED_BOLT_CLANG_BUILD}/bin/clang-${CLANG_VERSION}.bolt clang
@@ -48,4 +50,4 @@ ln -sf ${PATH_TO_INSTRUMENTED_BOLT_CLANG_BUILD}/bin/clang-${CLANG_VERSION}.bolt 
 cd ..
 ninja clean
 echo "*********** BOLT ***********"
-perf stat -r1 -e instructions,cycles,L1-icache-misses,iTLB-misses -- bash -c "ninja -j48 clang && ninja clean"
+perf stat -r1 -e $EVENTS -- bash -c "ninja -j48 clang && ninja clean"
