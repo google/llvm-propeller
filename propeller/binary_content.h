@@ -134,11 +134,11 @@ class ELFFileUtilBase {
   static constexpr llvm::StringRef kBuildIdNoteName = "GNU";
 
   friend std::unique_ptr<ELFFileUtilBase> CreateELFFileUtil(
-      llvm::object::ObjectFile* object_file);
+      const llvm::object::ObjectFile* object_file);
 };
 
 std::unique_ptr<ELFFileUtilBase> CreateELFFileUtil(
-    llvm::object::ObjectFile* object_file);
+    const llvm::object::ObjectFile* object_file);
 
 absl::StatusOr<std::unique_ptr<BinaryContent>> GetBinaryContent(
     absl::string_view binary_file_name);
