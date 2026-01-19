@@ -15,6 +15,7 @@
 #ifndef PROPELLER_PATH_NODE_H_
 #define PROPELLER_PATH_NODE_H_
 
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <string>
@@ -41,18 +42,18 @@ namespace propeller {
 struct PathPredInfoEntry {
   // Frequency of the path from root to this path node, given a specific path
   // predecessor block.
-  int freq = 0;
+  int64_t freq = 0;
   // Instruction cache pressure for cloning this path node along the given
   // path predecessor block.
   double cache_pressure = 0;
   // Frequencies of the calls from this path node, for one path predecessor
   // bock. Maps from the callsite (callee's function index and return block) to
   // its frequency.
-  absl::flat_hash_map<propeller::CallRetInfo, int> call_freqs;
+  absl::flat_hash_map<propeller::CallRetInfo, int64_t> call_freqs;
   // Frequencies of the returns from this path node, for one path
   // predecessor block. Maps from the `FlatBbHandle` of each block to the
   // frequency of returns into it.
-  absl::flat_hash_map<propeller::FlatBbHandle, int> return_to_freqs;
+  absl::flat_hash_map<propeller::FlatBbHandle, int64_t> return_to_freqs;
 
   // Implementation of the `AbslStringify` interface.
   template <typename Sink>
@@ -99,7 +100,7 @@ struct PathPredInfo {
   // Returns the frequency of the path from root to this path node, given a
   // specific path predecessor block. Returns 0 if the path predecessor is not
   // found.
-  int GetFreqForPathPred(int path_pred_bb_index) const {
+  int64_t GetFreqForPathPred(int path_pred_bb_index) const {
     auto it = entries.find(path_pred_bb_index);
     if (it == entries.end()) return 0;
     return it->second.freq;
@@ -250,10 +251,10 @@ class PathNode {
   // Returns the total frequency of the children of this path node, for the
   // given path predecessor block specified by its flat bb index
   // `path_pred_bb_index`.
-  int GetTotalChildrenFreqForPathPred(int path_pred_bb_index) const {
+  int64_t GetTotalChildrenFreqForPathPred(int path_pred_bb_index) const {
     return absl::c_accumulate(
-        children(), 0,
-        [path_pred_bb_index](int total, const auto& child_bb_path_node) {
+        children(), int64_t{0},
+        [path_pred_bb_index](int64_t total, const auto& child_bb_path_node) {
           return total +
                  child_bb_path_node.second->path_pred_info().GetFreqForPathPred(
                      path_pred_bb_index);

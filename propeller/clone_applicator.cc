@@ -14,6 +14,7 @@
 
 #include "propeller/clone_applicator.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -90,7 +91,7 @@ void CreateInterFunctionEdges(
             *clone_cfgs_by_index.at(inter_edge_reroute.src_function_index);
         ControlFlowGraph& sink_cfg =
             *clone_cfgs_by_index.at(inter_edge_reroute.sink_function_index);
-        int weight_remainder = inter_edge_reroute.weight;
+        int64_t weight_remainder = inter_edge_reroute.weight;
         if (inter_edge_reroute.src_is_cloned) {
           CHECK_EQ(inter_edge_reroute.src_function_index, function_index);
           // This is a call or return edge from this function. We first reduce

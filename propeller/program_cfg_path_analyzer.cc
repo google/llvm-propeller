@@ -15,6 +15,7 @@
 #include "propeller/program_cfg_path_analyzer.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -209,7 +210,7 @@ class CloningPathTraceHandler : public PathTraceHandler {
       }
     }
     for (PathProbe& path_probe : current_path_probes_) {
-      absl::flat_hash_map<CallRetInfo, int>& call_freqs_for_pred =
+      absl::flat_hash_map<CallRetInfo, int64_t>& call_freqs_for_pred =
           path_probe.path_node()
               ->mutable_path_pred_info()
               .GetOrInsertEntry(path_probe.pred_node_bb_index())
