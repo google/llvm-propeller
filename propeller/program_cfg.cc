@@ -14,6 +14,7 @@
 
 #include "propeller/program_cfg.h"
 
+#include <cstdint>
 #include <tuple>
 #include <vector>
 
@@ -46,16 +47,16 @@ ProgramCfg::GetCfgsBySectionName() const {
   return result;
 }
 
-int ProgramCfg::GetNodeFrequencyThreshold(
+int64_t ProgramCfg::GetNodeFrequencyThreshold(
     int node_frequency_cutoff_percentile) const {
   CHECK_LE(node_frequency_cutoff_percentile, 100);
   CHECK_GE(node_frequency_cutoff_percentile, 0);
   struct NodeFrequencyInfo {
     int function_index;
     int node_index;
-    int frequency;
+    int64_t frequency;
   };
-  absl::flat_hash_map<int, std::vector<int>> node_frequencies;
+  absl::flat_hash_map<int, std::vector<int64_t>> node_frequencies;
   for (const auto& [function_index, cfg] : cfgs_) {
     node_frequencies.emplace(function_index, cfg->GetNodeFrequencies());
   }
@@ -85,7 +86,8 @@ int ProgramCfg::GetNodeFrequencyThreshold(
 }
 
 absl::flat_hash_map<int, absl::btree_set<int>> ProgramCfg::GetHotJoinNodes(
-    int hot_node_frequency_threshold, int hot_edge_frequency_threshold) const {
+    int64_t hot_node_frequency_threshold,
+    int64_t hot_edge_frequency_threshold) const {
   absl::flat_hash_map<int, absl::btree_set<int>> hot_join_nodes;
 
   for (const auto& [function_index, cfg] : cfgs_) {

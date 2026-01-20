@@ -43,7 +43,7 @@ struct NodeArg {
 struct IntraEdgeArg {
   int from_bb_index;
   int to_bb_index;
-  int weight;
+  int64_t weight;
   CFGEdgeKind kind;
 };
 
@@ -52,7 +52,7 @@ struct InterEdgeArg {
   int from_bb_index;
   int to_function_index;
   int to_bb_index;
-  int weight;
+  int64_t weight;
   CFGEdgeKind kind;
 };
 

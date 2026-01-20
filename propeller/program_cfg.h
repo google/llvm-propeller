@@ -15,6 +15,7 @@
 #ifndef PROPELLER_PROGRAM_CFG_H_
 #define PROPELLER_PROGRAM_CFG_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -79,7 +80,7 @@ class ProgramCfg {
   // Returns the `node_frequency_cutoff_percentile` frequency percentile among
   // all nodes with non-zero frequencies. `node_frequency_cutoff_percentile`
   // must be between 0 and 100.
-  int GetNodeFrequencyThreshold(int node_frequency_cutoff_percentile) const;
+  int64_t GetNodeFrequencyThreshold(int node_frequency_cutoff_percentile) const;
 
   // Returns the bb_indexes of hot join nodes in all CFGs. These are nodes which
   // have a frequency of at least `hot_node_frequency_threshold` and at least
@@ -87,7 +88,8 @@ class ProgramCfg {
   // `hot_edge_frequency_threshold`. Basic block indexes are returned in a map
   // keyed by their function index.
   absl::flat_hash_map<int, absl::btree_set<int>> GetHotJoinNodes(
-      int hot_node_frequency_threshold, int hot_edge_frequency_threshold) const;
+      int64_t hot_node_frequency_threshold,
+      int64_t hot_edge_frequency_threshold) const;
 
   absl::flat_hash_map<int, std::unique_ptr<ControlFlowGraph>>
   release_cfgs_by_index() && {

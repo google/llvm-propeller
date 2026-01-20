@@ -14,6 +14,7 @@
 
 #ifndef PROPELLER_CFG_MATCHERS_H_
 #define PROPELLER_CFG_MATCHERS_H_
+#include <cstdint>
 #include <memory>
 #include <ostream>
 #include <utility>
@@ -72,7 +73,7 @@ MATCHER_P(NodeIndexIs, bb_index_matcher,
 
 MATCHER_P(NodeFreqIs, freq_matcher,
           "has frequency that " +
-              testing::DescribeMatcher<int>(freq_matcher, negation)) {
+              testing::DescribeMatcher<int64_t>(freq_matcher, negation)) {
   return testing::ExplainMatchResult(
       testing::Property("frequency", &CFGNode::CalculateFrequency,
                         freq_matcher),
@@ -85,7 +86,7 @@ MATCHER_P4(IsCfgEdge, src_matcher, sink_matcher, weight_matcher, kind_matcher,
                (negation ? " or" : " and") + " has sink that " +
                testing::DescribeMatcher<CFGNode*>(sink_matcher, negation) +
                (negation ? " or" : " and") + " has weight that " +
-               testing::DescribeMatcher<int>(weight_matcher, negation) +
+               testing::DescribeMatcher<int64_t>(weight_matcher, negation) +
                (negation ? " or" : " and") + " has kind that " +
                testing::DescribeMatcher<CFGEdgeKind>(kind_matcher, negation)) {
   return ExplainMatchResult(
