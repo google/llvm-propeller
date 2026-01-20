@@ -104,10 +104,10 @@ absl::Status FindRelocatableTextSectionToFillSegment(
 template <class ELFT>
 class ELFFileUtil : public ::propeller::ELFFileUtilBase {
  public:
-  explicit ELFFileUtil(llvm::object::ObjectFile* object) {
-    llvm::object::ELFObjectFile<ELFT>* elf_object =
-        llvm::dyn_cast<llvm::object::ELFObjectFile<ELFT>,
-                       llvm::object::ObjectFile>(object);
+  explicit ELFFileUtil(const llvm::object::ObjectFile* object) {
+    const llvm::object::ELFObjectFile<ELFT>* elf_object =
+        llvm::dyn_cast<const llvm::object::ELFObjectFile<ELFT>,
+                       const llvm::object::ObjectFile>(object);
     if (elf_object) elf_file_ = &elf_object->getELFFile();
   }
 
@@ -418,7 +418,7 @@ ELFFileUtilBase::ParseModInfoSectionContent(absl::string_view section_content) {
 }
 
 std::unique_ptr<ELFFileUtilBase> CreateELFFileUtil(
-    llvm::object::ObjectFile* object_file) {
+    const llvm::object::ObjectFile* object_file) {
   if (!object_file) return nullptr;
   llvm::StringRef content = object_file->getData();
   const char* elf_start = content.data();
@@ -528,7 +528,7 @@ absl::StatusOr<int64_t> GetSymbolAddress(
     absl::string_view symbol_name) {
   const llvm::object::ELFObjectFileBase* elf_object =
       llvm::dyn_cast<const llvm::object::ELFObjectFileBase,
-                     const llvm::object::ObjectFile>((&object_file));
+                     const llvm::object::ObjectFile>(&object_file);
   if (elf_object == nullptr) {
     return absl::InvalidArgumentError(
         "The provided object file is not an ELF object file.");
