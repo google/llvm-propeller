@@ -35,7 +35,7 @@ struct BranchFrequencies {
   // Computes the sum of all taken branch counters.
   int64_t GetNumberOfTakenBranchCounters() const {
     return absl::c_accumulate(
-        taken_branch_counters, 0,
+        taken_branch_counters, int64_t{0},
         [](int64_t cnt, const auto& v) { return cnt + v.second; });
   }
 

@@ -15,6 +15,7 @@
 #include "propeller/cfg.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -52,7 +53,7 @@ bool CFGEdge::IsIndirectBranch() const {
 }
 
 CFGEdge* ControlFlowGraph::CreateOrUpdateEdge(CFGNode* from, CFGNode* to,
-                                              int weight, CFGEdgeKind kind,
+                                              int64_t weight, CFGEdgeKind kind,
                                               bool inter_section) {
   CFGEdge* edge = from->GetEdgeTo(*to, kind);
   if (edge == nullptr) return CreateEdge(from, to, weight, kind, inter_section);
@@ -60,8 +61,9 @@ CFGEdge* ControlFlowGraph::CreateOrUpdateEdge(CFGNode* from, CFGNode* to,
   return edge;
 }
 
-CFGEdge* ControlFlowGraph::CreateEdge(CFGNode* from, CFGNode* to, int weight,
-                                      CFGEdgeKind kind, bool inter_section) {
+CFGEdge* ControlFlowGraph::CreateEdge(CFGNode* from, CFGNode* to,
+                                      int64_t weight, CFGEdgeKind kind,
+                                      bool inter_section) {
   if (inter_section)
     CHECK_NE(from->function_index(), to->function_index())
         << " intra-function edges cannot be inter-section.";
@@ -148,7 +150,8 @@ void ControlFlowGraph::WriteDotFormat(
 }
 
 std::vector<int> ControlFlowGraph::GetHotJoinNodes(
-    int hot_node_frequency_threshold, int hot_edge_frequency_threshold) const {
+    int64_t hot_node_frequency_threshold,
+    int64_t hot_edge_frequency_threshold) const {
   std::vector<int> ret;
   for (const std::unique_ptr<CFGNode>& node : nodes_) {
     if (node->is_entry()) continue;

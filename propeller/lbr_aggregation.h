@@ -35,7 +35,7 @@ namespace propeller {
 struct LbrAggregation {
   int64_t GetNumberOfBranchCounters() const {
     return absl::c_accumulate(
-        branch_counters, 0,
+        branch_counters, int64_t{0},
         [](int64_t cnt, const auto& v) { return cnt + v.second; });
   }
 
