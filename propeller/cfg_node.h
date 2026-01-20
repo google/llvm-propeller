@@ -71,7 +71,7 @@ class CFGNode final {
   bool is_cloned() const { return clone_number() != 0; }
   // Computes and returns the execution frequency of the node based on its
   // edges.
-  int CalculateFrequency() const;
+  int64_t CalculateFrequency() const;
   int size() const { return size_; }
   uint64_t hash() const { return hash_; }
   bool is_landing_pad() const { return metadata_.IsEHPad; }

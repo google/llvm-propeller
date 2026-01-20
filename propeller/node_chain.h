@@ -16,6 +16,7 @@
 #define PROPELLER_NODE_CHAIN_H_
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -106,7 +107,7 @@ class CFGNodeBundle {
   CFGNodeBundle& operator=(CFGNodeBundle&& other) = default;
 
   int size() const { return size_; }
-  int freq() const { return freq_; }
+  int64_t freq() const { return freq_; }
   const std::vector<const CFGNode*>& nodes() const { return nodes_; }
   const ChainMappingEntry& chain_mapping() const { return chain_mapping_; }
   const std::vector<const CFGEdge*>& intra_chain_out_edges() const {
@@ -157,7 +158,7 @@ class CFGNodeBundle {
   int size_;
 
   // Total execution frequency of this bundle.
-  int freq_;
+  int64_t freq_;
 
   // Edges from this bundle to other bundles of `chain_`. Ordered in increasing
   // order of the sink bundle's `chain_index_`. This ordering should be enforced
@@ -197,7 +198,7 @@ class NodeChain {
   std::optional<int> function_index() const { return function_index_; }
   double score() const { return score_; }
   int size() const { return size_; }
-  int freq() const { return freq_; }
+  int64_t freq() const { return freq_; }
   std::vector<std::unique_ptr<CFGNodeBundle>>& mutable_node_bundles() {
     return node_bundles_;
   }
@@ -314,7 +315,7 @@ class NodeChain {
   // Total binary size of the chain.
   int size_;
   // Total execution frequency of the chain.
-  int freq_;
+  int64_t freq_;
   // Total score for this chain.
   double score_ = 0;
 

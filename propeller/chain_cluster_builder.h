@@ -54,7 +54,7 @@ class ChainCluster {
   int size() const { return size_; }
 
   // Returns the total frequency of the cluster.
-  int freq() const { return freq_; }
+  int64_t freq() const { return freq_; }
 
   // Returns the unique identifier for this cluster.
   InterCfgId id() const { return id_; }
@@ -90,7 +90,7 @@ class ChainCluster {
   int size_;
 
   // Total frequency of the cluster.
-  int freq_;
+  int64_t freq_;
 };
 
 class ChainClusterBuilder {

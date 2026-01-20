@@ -15,6 +15,7 @@
 #ifndef PROPELLER_PROGRAM_CFG_BUILDER_H_
 #define PROPELLER_PROGRAM_CFG_BUILDER_H_
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -64,7 +65,7 @@ class ProgramCfgBuilder {
   // to the corresponding nodes specified by `tmp_node_map`. Finally inserts the
   // edge into `tmp_edge_map` with the key being the pair `{from_bb, to_bb}`.
   CFGEdge* InternalCreateEdge(
-      int from_bb_index, int to_bb_index, int weight, CFGEdgeKind edge_kind,
+      int from_bb_index, int to_bb_index, int64_t weight, CFGEdgeKind edge_kind,
       const absl::flat_hash_map<InterCfgId, CFGNode*>& tmp_node_map,
       absl::flat_hash_map<std::pair<InterCfgId, InterCfgId>, CFGEdge*>*
           tmp_edge_map);
@@ -72,7 +73,7 @@ class ProgramCfgBuilder {
   void CreateFallthroughs(
       const BranchAggregation& branch_aggregation,
       const absl::flat_hash_map<InterCfgId, CFGNode*>& tmp_node_map,
-      absl::flat_hash_map<std::pair<int, int>, int>*
+      absl::flat_hash_map<std::pair<int, int>, int64_t>*
           tmp_bb_fallthrough_counters,
       absl::flat_hash_map<std::pair<InterCfgId, InterCfgId>, CFGEdge*>*
           tmp_edge_map);

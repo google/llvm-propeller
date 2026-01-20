@@ -15,6 +15,7 @@
 #include "propeller/cfg_node.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <string>
 #include <tuple>
@@ -43,7 +44,7 @@ CFGEdge* CFGNode::GetEdgeTo(const CFGNode& node, CFGEdgeKind kind) const {
   }
   return nullptr;
 }
-int CFGNode::CalculateFrequency() const {
+int64_t CFGNode::CalculateFrequency() const {
   // A node (basic block) may have multiple outgoing calls to different
   // functions. In that case, a single execution of that node counts toward
   // the weight of each of its calls as wells as returns back to the
@@ -56,13 +57,13 @@ int CFGNode::CalculateFrequency() const {
   // but if different functions are called by that indirect call, the node's
   // frequency is equal to the aggregation of call-outs rather than their max.
 
-  int max_call_out = 0;
-  int max_ret_in = 0;
+  int64_t max_call_out = 0;
+  int64_t max_ret_in = 0;
 
   // Total incoming edge frequency to the node's entry (first instruction).
-  int sum_in = 0;
+  int64_t sum_in = 0;
   // Total outgoing edge frequency from the node's exit (last instruction).
-  int sum_out = 0;
+  int64_t sum_out = 0;
 
   for (auto* out_edges : {&inter_outs_, &intra_outs_}) {
     for (auto& edge : *out_edges) {

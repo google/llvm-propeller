@@ -14,6 +14,7 @@
 
 #include "propeller/profile_writer.h"
 
+#include <cstdint>
 #include <fstream>
 #include <memory>
 #include <optional>
@@ -124,7 +125,7 @@ void DumpCfgs(const PropellerProfile& profile,
 void WriteCfgProfile(const ControlFlowGraph& cfg, std::ofstream& out) {
   out << "g";
   cfg.ForEachNodeRef([&](const CFGNode& node) {
-    int node_frequency = node.CalculateFrequency();
+    int64_t node_frequency = node.CalculateFrequency();
     out << " " << node.full_intra_cfg_id().profile_bb_id() << ":"
         << node_frequency;
     node.ForEachOutEdgeInOrder([&](const CFGEdge& edge) {
