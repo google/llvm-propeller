@@ -14,6 +14,7 @@
 
 #include "propeller/program_cfg_builder.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <tuple>
@@ -139,7 +140,8 @@ absl::StatusOr<std::unique_ptr<ProgramCfg>> ProgramCfgBuilder::Build(
 void ProgramCfgBuilder::CreateFallthroughs(
     const BranchAggregation& branch_aggregation,
     const absl::flat_hash_map<InterCfgId, CFGNode*>& tmp_node_map,
-    absl::flat_hash_map<std::pair<int, int>, int>* tmp_bb_fallthrough_counters,
+    absl::flat_hash_map<std::pair<int, int>, int64_t>*
+        tmp_bb_fallthrough_counters,
     absl::flat_hash_map<std::pair<InterCfgId, InterCfgId>, CFGEdge*>*
         tmp_edge_map) {
   for (auto [fallthrough, cnt] : branch_aggregation.fallthrough_counters) {
@@ -159,7 +161,7 @@ void ProgramCfgBuilder::CreateFallthroughs(
 
   for (auto& i : *tmp_bb_fallthrough_counters) {
     int fallthrough_from = i.first.first, fallthrough_to = i.first.second;
-    int weight = i.second;
+    int64_t weight = i.second;
     if (fallthrough_from == fallthrough_to ||
         !binary_address_mapper_->CanFallThrough(fallthrough_from,
                                                 fallthrough_to))
@@ -174,7 +176,7 @@ void ProgramCfgBuilder::CreateFallthroughs(
 }
 
 CFGEdge* ProgramCfgBuilder::InternalCreateEdge(
-    int from_bb_index, int to_bb_index, int weight, CFGEdgeKind edge_kind,
+    int from_bb_index, int to_bb_index, int64_t weight, CFGEdgeKind edge_kind,
     const absl::flat_hash_map<InterCfgId, CFGNode*>& tmp_node_map,
     absl::flat_hash_map<std::pair<InterCfgId, InterCfgId>, CFGEdge*>*
         tmp_edge_map) {
@@ -237,9 +239,9 @@ absl::Status ProgramCfgBuilder::CreateEdges(
   // translated <from_bb, to_bb> may have duplicates.
   absl::flat_hash_map<std::pair<InterCfgId, InterCfgId>, CFGEdge*> tmp_edge_map;
 
-  absl::flat_hash_map<std::pair<int, int>, int> tmp_bb_fallthrough_counters;
+  absl::flat_hash_map<std::pair<int, int>, int64_t> tmp_bb_fallthrough_counters;
 
-  int weight_on_dubious_edges = 0;
+  int64_t weight_on_dubious_edges = 0;
   int edges_recorded = 0;
   for (auto [branch, weight] : branch_aggregation.branch_counters) {
     ++edges_recorded;

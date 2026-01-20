@@ -15,6 +15,7 @@
 #ifndef PROPELLER_CFG_H_
 #define PROPELLER_CFG_H_
 
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -83,7 +84,7 @@ struct CfgChangeFromPathCloning {
     // Whether src or sink will be cloned.
     bool src_is_cloned, sink_is_cloned;
     CFGEdgeKind kind;
-    int weight;
+    int64_t weight;
 
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const IntraEdgeReroute& reroute) {
@@ -103,7 +104,7 @@ struct CfgChangeFromPathCloning {
     // control flow must be rerouted.
     bool src_is_cloned, sink_is_cloned;
     CFGEdgeKind kind;
-    int weight;
+    int64_t weight;
 
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const InterEdgeReroute& reroute) {
@@ -247,18 +248,18 @@ class ControlFlowGraph {
 
   // Create edge and take ownership. Note: the caller must be responsible for
   // not creating duplicated edges.
-  CFGEdge* CreateEdge(CFGNode* from, CFGNode* to, int weight, CFGEdgeKind kind,
-                      bool inter_section);
+  CFGEdge* CreateEdge(CFGNode* from, CFGNode* to, int64_t weight,
+                      CFGEdgeKind kind, bool inter_section);
 
   // If an edge already exists from `from` to `to` of kind `kind`, then
   // increments its edge weight by weight. Otherwise, creates the edge.
-  CFGEdge* CreateOrUpdateEdge(CFGNode* from, CFGNode* to, int weight,
+  CFGEdge* CreateOrUpdateEdge(CFGNode* from, CFGNode* to, int64_t weight,
                               CFGEdgeKind kind, bool inter_section);
 
   // Returns the frequencies of nodes in this CFG in a vector, in the same order
   // as in `nodes_`.
-  std::vector<int> GetNodeFrequencies() const {
-    std::vector<int> node_frequencies;
+  std::vector<int64_t> GetNodeFrequencies() const {
+    std::vector<int64_t> node_frequencies;
     node_frequencies.reserve(nodes_.size());
     for (const auto& node : nodes_)
       node_frequencies.push_back(node->CalculateFrequency());
@@ -364,8 +365,8 @@ class ControlFlowGraph {
   // have a frequency of at least `hot_node_frequency_threshold` and at least
   // two incoming intra-function edges at least as heavy as
   // hot_edge_frequency_threshold`.
-  std::vector<int> GetHotJoinNodes(int hot_node_frequency_threshold,
-                                   int hot_edge_frequency_threshold) const;
+  std::vector<int> GetHotJoinNodes(int64_t hot_node_frequency_threshold,
+                                   int64_t hot_edge_frequency_threshold) const;
 
   NodeFrequencyStats GetNodeFrequencyStats() const;
 
