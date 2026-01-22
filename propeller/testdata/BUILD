@@ -407,15 +407,19 @@ genrule(
     toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
 )
 
-# This rule is used to manually generate a BBAddrMap binary with PGO analysis map.
+# This rule is used to manually generate a BBAddrMap binary with PGO analysis map including the
+# basic block sections profile.
 genrule(
     name = "sample_pgo_analysis_map_bin",
     srcs = ["sample.c"],
     outs = [
         "sample_pgo_analysis_map.bin.gen",
     ],
-    cmd = "$(CC) $(CC_FLAGS) -g -O2 -Wl,-build-id -pie -fbasic-block-address-map " +
-          "-mllvm=-pgo-analysis-map=all $< -o $(RULEDIR)/sample_pgo_analysis_map.bin.gen",
+    cmd = "echo -e \"v1\\nfmain\\nc0 1 3 4 5\\ng 0:24,1:24 1:24,3:13,5:11 3:14,5:15 5:16,6:17 6:17\\n\" > $(RULEDIR)/cc_profile.txt && " +
+          "$(CC) $(CC_FLAGS) -g -O2 -Wl,-build-id -pie -fbasic-block-address-map " +
+          "-mllvm=-pgo-analysis-map=all -mllvm=-pgo-analysis-map-emit-bb-sections-cfg " +
+          "-fbasic-block-sections=list=$(RULEDIR)/cc_profile.txt " +
+          " $< -o $(RULEDIR)/sample_pgo_analysis_map.bin.gen",
     tags = [
         "manual",
     ],
