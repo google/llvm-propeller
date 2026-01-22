@@ -18,6 +18,8 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_license//rules:license.bzl", "license")
+load("//third_party/protobuf/bazel:py_proto_library.bzl", "py_proto_library")
+load("//tools/build_defs/go:go_proto_library.bzl", "go_proto_library")
 
 package(
     default_applicable_licenses = [":license"],
@@ -422,6 +424,28 @@ cc_library(
 proto_library(
     name = "cfg_proto",
     srcs = ["cfg.proto"],
+)
+
+proto_library(
+    name = "prefetch_control_proto",
+    srcs = ["prefetch_control.proto"],
+    visibility = ["//perftools/gwp/arch/frontend_control:__subpackages__"],
+)
+
+cc_proto_library(
+    name = "prefetch_control_cc_proto",
+    deps = [":prefetch_control_proto"],
+)
+
+go_proto_library(
+    name = "prefetch_control_go_proto",
+    visibility = ["//perftools/gwp/arch/frontend_control:__subpackages__"],
+    deps = [":prefetch_control_proto"],
+)
+
+py_proto_library(
+    name = "prefetch_control_py_pb2",
+    deps = [":prefetch_control_proto"],
 )
 
 cc_proto_library(
