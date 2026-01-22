@@ -20,9 +20,9 @@
 #include <utility>
 
 #include "absl/base/attributes.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/TargetParser/Triple.h"
 #include "propeller/binary_address_branch.h"
 #include "propeller/binary_address_mapper.h"
@@ -69,17 +69,20 @@ FrequenciesBranchAggregator::FrequenciesBranchAggregator(
                           .options = std::move(options),
                           .binary_content = std::move(binary_content)}} {}
 
-absl::StatusOr<absl::flat_hash_set<uint64_t>>
+absl::StatusOr<llvm::DenseSet<uint64_t>>
 FrequenciesBranchAggregator::GetBranchEndpointAddresses() {
   ASSIGN_OR_RETURN(BranchFrequencies frequencies,
                    lazy_aggregator_.Evaluate().frequencies);
-  absl::flat_hash_set<uint64_t> endpoint_addresses;
+  llvm::DenseSet<uint64_t> endpoint_addresses;
   for (const auto& [branch, count] : frequencies.taken_branch_counters) {
-    endpoint_addresses.insert(branch.from);
-    endpoint_addresses.insert(branch.to);
+    if (branch.from != kInvalidBinaryAddress)
+      endpoint_addresses.insert(branch.from);
+    if (branch.to != kInvalidBinaryAddress)
+      endpoint_addresses.insert(branch.to);
   }
   for (const auto& [branch, count] : frequencies.not_taken_branch_counters) {
-    endpoint_addresses.insert(branch.address);
+    if (branch.address != kInvalidBinaryAddress)
+      endpoint_addresses.insert(branch.address);
   }
   return endpoint_addresses;
 }
@@ -89,7 +92,7 @@ absl::StatusOr<BranchAggregation> FrequenciesBranchAggregator::Aggregate(
   ASSIGN_OR_RETURN(const BranchFrequencies& frequencies,
                    lazy_aggregator_.Evaluate().frequencies);
 
-  absl::flat_hash_map<BinaryAddressFallthrough, int64_t> fallthrough_counts =
+  llvm::DenseMap<BinaryAddressFallthrough, int64_t> fallthrough_counts =
       InferFallthroughs(frequencies, binary_address_mapper);
 
   stats += lazy_aggregator_.Evaluate().stats;
@@ -122,8 +125,8 @@ FrequenciesBranchAggregator::ComputeBlockWeights(
 }
 
 void FrequenciesBranchAggregator::AccumulateActualOutgoingWeights(
-    const absl::flat_hash_map<BinaryAddressBranch, int64_t>& taken_branches,
-    const absl::flat_hash_map<BinaryAddressNotTakenBranch, int64_t>&
+    const llvm::DenseMap<BinaryAddressBranch, int64_t>& taken_branches,
+    const llvm::DenseMap<BinaryAddressNotTakenBranch, int64_t>&
         not_taken_branches,
     const BinaryAddressMapper& binary_address_mapper,
     WeightsMap& weights_map) const {
@@ -162,7 +165,7 @@ void FrequenciesBranchAggregator::AccumulateActualOutgoingWeights(
 }
 
 void FrequenciesBranchAggregator::AccumulateBranchWeights(
-    const absl::flat_hash_map<BinaryAddressBranch, int64_t>& taken_branches,
+    const llvm::DenseMap<BinaryAddressBranch, int64_t>& taken_branches,
     const BinaryAddressMapper& binary_address_mapper,
     WeightsMap& weights_map) const {
   for (const auto& [branch, count] : taken_branches) {
@@ -225,8 +228,7 @@ std::optional<int> FrequenciesBranchAggregator::FindFallthroughEndBlock(
 void FrequenciesBranchAggregator::HandleFallthrough(
     int from_bb_handle_index, int to_bb_handle_index, uint64_t weight,
     const BinaryAddressMapper& binary_address_mapper,
-    absl::flat_hash_map<BinaryAddressFallthrough, int64_t>& fallthroughs)
-    const {
+    llvm::DenseMap<BinaryAddressFallthrough, int64_t>& fallthroughs) const {
   std::optional<int> fallthrough_end = FindFallthroughEndBlock(
       from_bb_handle_index, to_bb_handle_index, binary_address_mapper);
 
@@ -240,11 +242,11 @@ void FrequenciesBranchAggregator::HandleFallthrough(
   }
 }
 
-absl::flat_hash_map<BinaryAddressFallthrough, int64_t>
+llvm::DenseMap<BinaryAddressFallthrough, int64_t>
 FrequenciesBranchAggregator::InferFallthroughs(
     const BranchFrequencies& frequencies,
     const BinaryAddressMapper& binary_address_mapper) const {
-  absl::flat_hash_map<BinaryAddressFallthrough, int64_t> fallthrough_counts;
+  llvm::DenseMap<BinaryAddressFallthrough, int64_t> fallthrough_counts;
   std::optional<std::pair<int, int64_t>> fallthrough_from;
 
   WeightsMap weights = ComputeBlockWeights(frequencies, binary_address_mapper);

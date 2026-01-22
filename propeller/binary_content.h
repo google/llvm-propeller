@@ -22,10 +22,10 @@
 #include <vector>
 
 #include "absl/container/btree_map.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
@@ -78,7 +78,7 @@ struct BinaryContent {
     // information for the module, however, that would need to build this tool
     // again kernel headers.
     // https://source.corp.google.com/h/prodkernel/kernel/release/11xx/+/next:include/linux/module.h;l=365;bpv=1;bpt=0;drc=f2a96a349893fdff944b710ee86d1106de088a40
-    absl::flat_hash_map<absl::string_view, absl::string_view> modinfo;
+    llvm::DenseMap<llvm::StringRef, llvm::StringRef> modinfo;
   };
 
   std::string file_name;
@@ -120,9 +120,8 @@ class ELFFileUtilBase {
       BinaryContent& binary_content) = 0;
 
   // Parses (key, value) pairs in `section_content` and store them in `modinfo`.
-  static absl::StatusOr<
-      absl::flat_hash_map<absl::string_view, absl::string_view>>
-  ParseModInfoSectionContent(absl::string_view section_content);
+  static absl::StatusOr<llvm::DenseMap<llvm::StringRef, llvm::StringRef>>
+  ParseModInfoSectionContent(llvm::StringRef section_content);
 
  protected:
   static constexpr llvm::StringRef kModInfoSectionName = ".modinfo";
@@ -141,15 +140,15 @@ std::unique_ptr<ELFFileUtilBase> CreateELFFileUtil(
     const llvm::object::ObjectFile* object_file);
 
 absl::StatusOr<std::unique_ptr<BinaryContent>> GetBinaryContent(
-    absl::string_view binary_file_name);
+    llvm::StringRef binary_file_name);
 
 // Returns the binary address of the symbol named `symbol_name`, or
 // `absl::NotFoundError` if the symbol is not found.
 absl::StatusOr<int64_t> GetSymbolAddress(
-    const llvm::object::ObjectFile& object_file, absl::string_view symbol_name);
+    const llvm::object::ObjectFile& object_file, llvm::StringRef symbol_name);
 
 // Returns the binary's function symbols by reading from its symbol table.
-absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
+llvm::DenseMap<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
 ReadSymbolTable(const BinaryContent& binary_content);
 
 // Returns the binary's thunk symbols by reading from its symbol table.
@@ -159,7 +158,7 @@ absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> ReadThunkSymbols(
     const BinaryContent& binary_content);
 
 // Returns a map from function addresses to their symbol info.
-absl::flat_hash_map<uint64_t, FunctionSymbolInfo> GetSymbolInfoMap(
+llvm::DenseMap<uint64_t, FunctionSymbolInfo> GetSymbolInfoMap(
     const BinaryContent& binary_content);
 
 // Returns the binary's `BbAddrMapData`s by calling LLVM-side decoding function
