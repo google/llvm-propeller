@@ -38,6 +38,18 @@ jobs:
         with:
            # Avoid downloading Bazel every time.
           bazelisk-cache: true
+          # Store to a per-workflow build cache.
+          disk-cache: ${{ github.workflow }}
+          # Share repository cache between workflows.
+          repository-cache: true
+          # Don't pollute the cache with PR builds.
+          cache-save: ${{ github.event_name != 'pull_request' }}
+
+      - name: Set up Bazelisk
+        uses: bazel-contrib/setup-bazel@0.18.0
+        with:
+           # Avoid downloading Bazel every time.
+          bazelisk-cache: true
       - name: Configure the runner
         run: |
           sudo apt-get update
@@ -45,19 +57,6 @@ jobs:
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 20
-
-      - name: Mount the Bazel cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/bazel
-          # To avoid drift, we always want to update the cache. We use a unique primary key so that
-          # there is never a cache hit on the primary key, but there *is* a cache hit on one of the
-          # restore keys; this way, we fetch relevant entries, but always write back the cache.
-          key: ${{ runner.os }}-bazel-${{ hashFiles('.bazelversion', '.bazelrc', 'WORKSPACE', 'WORKSPACE.bazel', 'MODULE.bazel') }}-${{ github.run_id }}
-          restore-keys: |
-            ${{ runner.os }}-bazel-${{ hashFiles('.bazelversion', '.bazelrc', 'WORKSPACE', 'WORKSPACE.bazel', 'MODULE.bazel') }}-
-            ${{ runner.os }}-bazel-
 
       - name: Mount the CMake dependency source cache
         uses: actions/cache@v4
