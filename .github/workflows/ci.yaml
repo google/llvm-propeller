@@ -45,11 +45,6 @@ jobs:
           # Don't pollute the cache with PR builds.
           cache-save: ${{ github.event_name != 'pull_request' }}
 
-      - name: Set up Bazelisk
-        uses: bazel-contrib/setup-bazel@0.18.0
-        with:
-           # Avoid downloading Bazel every time.
-          bazelisk-cache: true
       - name: Configure the runner
         run: |
           sudo apt-get update
