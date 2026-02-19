@@ -1,0 +1,1 @@
+# Empty BUILD file to mark the root as a package, so that llvm_ext.bzl works.

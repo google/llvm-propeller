@@ -1,0 +1,7 @@
+{
+  "url": "https://github.com/google/perf_data_converter/archive/f9eb05fcce80189c311a01341bb535a382d5d740.tar.gz",
+  "integrity": "sha256-XHR4MslNNYhHw7KcX4NyceQLmA92KalcYY66OBfHdnk=",
+  "strip_prefix": "perf_data_converter-f9eb05fcce80189c311a01341bb535a382d5d740",
+  "patch_strip": 0,
+  "patches": {}
+}

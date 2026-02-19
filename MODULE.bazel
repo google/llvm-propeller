@@ -23,7 +23,7 @@ module(
 
 bazel_dep(
     name = "bazel_skylib",
-    version = "1.7.1",
+    version = "1.9.0",
 )
 bazel_dep(
     name = "rules_license",
@@ -35,13 +35,13 @@ bazel_dep(
 bazel_dep(
     name = "abseil-cpp",
     # LINT.IfChange(abseil_version)
-    version = "20250512.0",
+    version = "20260107.1",
     # LINT.ThenChange(CMake/Absl/Absl.cmake:version)
 )
 bazel_dep(
     name = "googletest",
     # LINT.IfChange(gtest_version)
-    version = "1.17.0",
+    version = "1.17.0.bcr.2",
     # LINT.ThenChange(CMake/Googletest/Googletest.cmake:version)
     repo_name = "com_google_googletest",
 )
@@ -55,14 +55,52 @@ bazel_dep(
 bazel_dep(
     name = "perf_data_converter",
     # LINT.IfChange(quipper_version)
-    version = "0.0.0-20241014-f76cd4d",
+    version = "0.0.0-20260219-f9eb05f",
     # LINT.ThenChange(CMake/Quipper/Quipper.cmake:commit_hash)
     repo_name = "com_google_perf_data_converter",
 )
-bazel_dep(name = "rules_cc", version = "0.2.8")
+bazel_dep(name = "rules_cc", version = "0.2.17")
 
-# TODO: b/367348146 - Remove this transitive dependency once we ingest LLVM with bzlmod.
-bazel_dep(name = "rules_python", version = "1.6.3")
-
-# TODO: b/367348146 - Remove this transitive dependency once we ingest LLVM with bzlmod.
+# The following dependencies are not used by Propeller itself, but are needed for LLVM. When/if
+# LLVM gets properly integrated with the Bazel Central Registry, these can be removed.
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "rules_python", version = "1.8.4")
 bazel_dep(name = "rules_shell", version = "0.6.1")
+
+new_git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "new_git_repository")
+
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+# LINT.IfChange(llvm_commit_hash)
+LLVM_COMMIT = "c6bb1afbc5086c3f483921c575262bd95c346e5b"
+# LINT.ThenChange(CMake/LLVM/LLVM.cmake:commit_hash)
+
+new_git_repository(
+    name = "llvm-raw",
+    build_file_content = "# empty",
+    commit = LLVM_COMMIT,
+    remote = "https://github.com/llvm/llvm-project.git",
+)
+
+http_archive(
+    name = "llvm_zlib",
+    build_file = "@llvm-raw//utils/bazel/third_party_build:zlib-ng.BUILD",
+    sha256 = "e36bb346c00472a1f9ff2a0a4643e590a254be6379da7cddd9daeb9a7f296731",
+    strip_prefix = "zlib-ng-2.0.7",
+    urls = [
+        "https://github.com/zlib-ng/zlib-ng/archive/refs/tags/2.0.7.zip",
+    ],
+)
+
+http_archive(
+    name = "llvm_zstd",
+    build_file = "@llvm-raw//utils/bazel/third_party_build:zstd.BUILD",
+    sha256 = "7c42d56fac126929a6a85dbc73ff1db2411d04f104fae9bdea51305663a83fd0",
+    strip_prefix = "zstd-1.5.2",
+    urls = [
+        "https://github.com/facebook/zstd/releases/download/v1.5.2/zstd-1.5.2.tar.gz",
+    ],
+)
+
+llvm_ext = use_extension("//:llvm_ext.bzl", "llvm_ext")
+use_repo(llvm_ext, "llvm-project")

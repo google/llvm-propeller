@@ -16,7 +16,7 @@
 # Integrates Perf Data Converter / Quipper into the build.
 
 # LINT.IfChange(commit_hash)
-set(_QUIPPER_HASH f76cd4dd1e85bb54d60ea3fe69f92168fdf94edb)
+set(_QUIPPER_HASH f9eb05fcce80189c311a01341bb535a382d5d740)
 # LINT.ThenChange(../../MODULE.bazel:quipper_version)
 
 set(propeller_quipper_build_dir ${CMAKE_BINARY_DIR}/quipper-build)

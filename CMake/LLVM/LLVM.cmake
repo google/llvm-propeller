@@ -16,8 +16,8 @@
 # Integrates LLVM into the build.
 
 # LINT.IfChange(commit_hash)
-set(_LLVM_HASH ddd3aa6ba354bd226424818ea99271d66319c847)
-# LINT.ThenChange(../../WORKSPACE.bzlmod:llvm_commit_hash)
+set(_LLVM_HASH c6bb1afbc5086c3f483921c575262bd95c346e5b)
+# LINT.ThenChange(../../MODULE.bazel:llvm_commit_hash)
 
 set(propeller_llvm_build_dir ${CMAKE_BINARY_DIR}/llvm-build)
 set(propeller_llvm_download_url https://github.com/llvm/llvm-project/archive/${_LLVM_HASH}.zip)
