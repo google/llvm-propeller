@@ -30,6 +30,7 @@ def _list_symbols(ctx):
     ctx.actions.run_shell(
         outputs = [output],
         inputs = [binary],
+        mnemonic = "PropellerListSymbols",
         command = " ".join(command) + " 1>" + output.path,
         progress_message = "Listing symbols in %s for %s" % (
             binary.short_path,
