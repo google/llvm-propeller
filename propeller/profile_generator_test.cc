@@ -46,6 +46,7 @@ using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::propeller_file::GetContents;
 using ::propeller_file::GetContentsIgnoringLines;
+using ::testing::ContainsRegex;
 using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::Not;

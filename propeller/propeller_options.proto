@@ -87,7 +87,8 @@ message PropellerOptions {
   propeller.PathProfileOptions path_profile_options = 15;
 
   // Write the edge profiles in the cluster file.
-  bool write_cfg_profile = 16 [default = true];
+  // Defaults to true iff `cluster_out_version` is not `VERSION_0`.
+  bool write_cfg_profile = 16 [features.field_presence = EXPLICIT];
 
   // Write the basic block hash in the cluster file.
   bool write_bb_hash = 18 [default = false];

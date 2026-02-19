@@ -19,6 +19,7 @@
 #include <string>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "propeller/function_prefetch_info.h"
 #include "propeller/profile.h"
 #include "propeller/program_cfg.h"
@@ -34,7 +35,7 @@ class PropellerProfileWriter {
 
   // Writes code layout result in `all_functions_cluster_info` into the output
   // file.
-  void Write(const PropellerProfile& profile) const;
+  absl::Status Write(const PropellerProfile& profile) const;
 
  private:
   struct ProfileEncoding;

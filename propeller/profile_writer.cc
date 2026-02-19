@@ -27,6 +27,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -172,7 +173,8 @@ void PropellerProfileWriter::WritePrefetchInfo(
   }
 }
 
-void PropellerProfileWriter::Write(const PropellerProfile& profile) const {
+absl::Status PropellerProfileWriter::Write(
+    const PropellerProfile& profile) const {
   std::ofstream cc_profile_os(options_.cluster_out_name());
   std::ofstream ld_profile_os(options_.symbol_order_out_name());
   if (profile_encoding_.version != ClusterEncodingVersion::VERSION_0) {
@@ -288,7 +290,17 @@ void PropellerProfileWriter::Write(const PropellerProfile& profile) const {
                         cc_profile_os);
 
       // Dump the edge profile for this CFG if requested.
-      if (options_.write_cfg_profile()) WriteCfgProfile(*cfg, cc_profile_os);
+      if (bool write_cfg_profile = options_.has_write_cfg_profile()
+                                       ? options_.write_cfg_profile()
+                                       : profile_encoding_.version !=
+                                             ClusterEncodingVersion::VERSION_0;
+          write_cfg_profile) {
+        if (profile_encoding_.version == ClusterEncodingVersion::VERSION_0) {
+          return absl::FailedPreconditionError(
+              "cfg profile for version 0 is not supported");
+        }
+        WriteCfgProfile(*cfg, cc_profile_os);
+      }
 
       // Dump the basic block hashes if requested.
       if (options_.write_bb_hash()) WriteBBHash(*cfg, cc_profile_os);
@@ -339,5 +351,6 @@ void PropellerProfileWriter::Write(const PropellerProfile& profile) const {
   }
   if (options_.has_cfg_dump_dir_name())
     DumpCfgs(profile, options_.cfg_dump_dir_name());
+  return absl::OkStatus();
 }
 }  // namespace propeller

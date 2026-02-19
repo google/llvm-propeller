@@ -165,7 +165,7 @@ absl::Status GeneratePropellerProfiles(
   ASSIGN_OR_RETURN(PropellerProfile profile,
                    std::move(*std::move(profile_computer)).ComputeProfile());
 
-  PropellerProfileWriter(opts).Write(profile);
+  RETURN_IF_ERROR(PropellerProfileWriter(opts).Write(profile));
   LOG(INFO) << profile.stats.DebugString();
 
   return absl::OkStatus();
