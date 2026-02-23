@@ -1,0 +1,100 @@
+edition = "2024";
+
+package propeller;
+
+// Intra-function branch or fallthrough edge.
+message EdgePb {
+  uint32 dest_bb_id = 1;  // The id of the destination basic block (corresponds
+                          // to BbEntryPb::id).
+  float frequency = 2;    // The raw frequency of the edge.
+  int64 post_link_frequency =
+      3;  // The post-link frequency of the edge based on the Propeller profile.
+}
+
+// Call edge.
+message CallEdgePb {
+  uint32 callee_address = 1;  // Address of the callee.
+  float frequency = 2;  // The raw frequency of the call. This is currently not
+                        // populated in the PGO analysis map.
+}
+
+message CallsitePb {
+  uint32 offset = 1;  // End offset of the call instruction (relative to the
+                      // start of the basic block).
+  repeated CallEdgePb call_edges =
+      2;  // The call edges from this callsite. Note that we might have multiple
+          // call edges from a single callsite in the case of indirect calls.
+}
+
+// Prefetch hint.
+message PrefetchHintPb {
+  uint32 site_bb_id = 1;
+  int32 site_callsite_index = 2;
+  string target_function_name = 3;
+  uint32 target_bb_id = 4;
+  int32 target_callsite_index = 5;
+}
+
+// Prefetch target.
+message PrefetchTargetPb {
+  uint32 bb_id = 1;
+  int32 callsite_index = 2;
+}
+
+message BbEntryPb {
+  uint32 index = 1;
+  uint32 id = 2;
+  uint32 offset = 3;
+  uint32 size = 4;
+  bool has_return = 5;     // If this block ends with a return (or tail call).
+  bool has_tail_call = 6;  // If this block ends with a tail call.
+  bool is_eh_pad = 7;      // If this is an exception handling block.
+  bool can_fall_through = 8;  // If this block can fall through to its next.
+  bool has_indirect_branch =
+      9;  // If this block ends with an indirect branch (branch via a register).
+  float frequency = 10;  // The raw frequency of this block.
+  repeated EdgePb edges =
+      11;  // The intra-function edges from this block to its successors.
+  repeated CallsitePb callsites = 12;  // The call sites in this block (with
+                                       // their destination and frequencies) in
+                                       // the order they appear in the block.
+  int64 post_link_frequency = 13;      // The post-link frequency of this block
+                                       // based on the Propeller profile.
+}
+
+// Optimization info from the Propeller profile.
+message OptimizationInfoPb {
+  // The number of basic block clusters in the function.
+  int32 n_clusters = 1;
+  // The original intra-function TSP score.
+  double original_intra_ext_tsp_score = 2;
+  // The optimized intra-function TSP score.
+  double optimized_intra_ext_tsp_score = 3;
+  // The prefetch hints for the function.
+  repeated PrefetchHintPb prefetch_hints = 4;
+  // The prefetch targets for the function.
+  repeated PrefetchTargetPb prefetch_targets = 5;
+}
+
+message BbRangePb {
+  uint64 base_address = 1;
+  repeated BbEntryPb bb_entries = 2;
+}
+
+message FunctionBbAddrMapPb {
+  uint64 function_address = 1;
+  repeated string function_names = 2;
+  repeated BbRangePb bb_ranges = 3;
+  string section_name = 4;
+  // Optimization info for the function from the Propeller profile.
+  OptimizationInfoPb optimization_info = 5;
+}
+
+message ModuleBbAddrMapPb {
+  string module_name = 1;
+  repeated FunctionBbAddrMapPb function_bb_addr_maps = 2;
+}
+
+message BbAddrMapPb {
+  repeated ModuleBbAddrMapPb module_bb_addr_maps = 1;
+}

@@ -27,17 +27,17 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
+#include "propeller/bb_addr_map.h"
+#include "propeller/bb_addr_map.pb.h"
 #include "propeller/cfg.h"
 #include "propeller/cfg_edge.h"
 #include "propeller/cfg_id.h"
@@ -52,67 +52,108 @@ namespace propeller {
 namespace {
 
 void DumpCfgs(const PropellerProfile& profile,
-              absl::string_view cfg_dump_dir_name) {
-  // Create the cfg dump directory and the cfg index file.
-  llvm::sys::fs::create_directory(cfg_dump_dir_name);
-  llvm::SmallString<100> cfg_index_file_vec(cfg_dump_dir_name.begin(),
-                                            cfg_dump_dir_name.end());
-  llvm::sys::path::append(cfg_index_file_vec, "cfg-index.txt");
-  std::string cfg_index_file(cfg_index_file_vec.str());
-  std::ofstream cfg_index_os(cfg_index_file, std::ofstream::out);
-  CHECK(cfg_index_os.good())
-      << "Failed to open " << cfg_index_file << " for writing.";
-  cfg_index_os << absl::StrJoin({"Function.Name", "Function.Address", "N_Nodes",
-                                 "N_Clusters", "Original.ExtTSP.Score",
-                                 "Optimized.ExtTSP.Score", "N_Prefetches"},
-                                " ")
-               << "\n";
-
-  for (const auto& [section_name, section_profile_info] :
-       profile.profile_infos_by_section_name) {
-    for (const auto& [function_index, func_profile_info] :
-         section_profile_info.profile_infos_by_function_index) {
-      const ControlFlowGraph* cfg =
-          profile.program_cfg->GetCfgByIndex(function_index);
-      CHECK_NE(cfg, nullptr);
-      // Dump hot cfgs into the given directory.
-      auto func_addr_str =
-          absl::StrCat("0x", absl::Hex(cfg->GetEntryNode()->addr()));
-      cfg_index_os << cfg->GetPrimaryName().str() << " " << func_addr_str << " "
-                   << cfg->nodes().size() << " "
-                   << func_profile_info.layout_info.bb_chains.size() << " "
-                   << func_profile_info.layout_info.original_score.intra_score
-                   << " "
-                   << func_profile_info.layout_info.optimized_score.intra_score
-                   << " "
-                   << func_profile_info.prefetch_info.prefetch_hints.size()
-                   << "\n";
-
-      // Use the address of the function as the CFG filename for uniqueness.
-      llvm::SmallString<100> cfg_dump_file_vec(cfg_dump_dir_name.begin(),
-                                               cfg_dump_dir_name.end());
-      llvm::sys::path::append(cfg_dump_file_vec,
-                              absl::StrCat(func_addr_str, ".dot"));
-      std::string cfg_dump_file(cfg_dump_file_vec.str());
-      std::ofstream cfg_dump_os(cfg_dump_file, std::ofstream::out);
-      CHECK(cfg_dump_os.good())
-          << "Failed to open " << cfg_dump_file << " for writing.";
-
-      absl::flat_hash_map<IntraCfgId, int> layout_index_map;
-      for (auto& bb_chain : func_profile_info.layout_info.bb_chains) {
-        int bbs = 0;
-        for (auto& bb_bundle : bb_chain.bb_bundles) {
-          for (int bbi = 0; bbi < bb_bundle.full_bb_ids.size(); ++bbi) {
-            layout_index_map.insert({bb_bundle.full_bb_ids[bbi].intra_cfg_id,
-                                     bb_chain.layout_index + bbs + bbi});
-          }
-          bbs += bb_bundle.full_bb_ids.size();
-        }
-      }
-      cfg->WriteDotFormat(cfg_dump_os, layout_index_map,
-                          func_profile_info.prefetch_info.prefetch_hints);
+              const PropellerOptions& options) {
+  BbAddrMapPb bb_addr_map_pb = GetBbAddrMap(options.binary_name());
+  if (bb_addr_map_pb.module_bb_addr_maps().empty()) {
+    LOG(ERROR) << "Failed to get BbAddrMap for " << options.binary_name();
+    return;
+  }
+  absl::flat_hash_map<uint64_t, FunctionBbAddrMapPb*> addr_to_func_map;
+  for (auto& module_map : *bb_addr_map_pb.mutable_module_bb_addr_maps()) {
+    for (auto& func_map : *module_map.mutable_function_bb_addr_maps()) {
+      addr_to_func_map[func_map.function_address()] = &func_map;
     }
   }
+
+  for (auto& [section_name, cfgs] :
+       profile.program_cfg->GetCfgsBySectionName()) {
+    const auto section_it =
+        profile.profile_infos_by_section_name.find(section_name);
+    for (const ControlFlowGraph* cfg : cfgs) {
+      auto func_map_it = addr_to_func_map.find(cfg->GetEntryNode()->addr());
+      if (func_map_it == addr_to_func_map.end()) {
+        LOG(WARNING) << "Function " << cfg->GetPrimaryName().str()
+                     << " not found in BbAddrMap.";
+        continue;
+      }
+      FunctionBbAddrMapPb* func_map = func_map_it->second;
+      const FunctionProfileInfo* func_profile_info = nullptr;
+      if (section_it != profile.profile_infos_by_section_name.end()) {
+        auto func_it = section_it->second.profile_infos_by_function_index.find(
+            cfg->function_index());
+        if (func_it !=
+            section_it->second.profile_infos_by_function_index.end()) {
+          func_profile_info = &func_it->second;
+        }
+      }
+      if (func_profile_info) {
+        auto* optimization_info = func_map->mutable_optimization_info();
+        optimization_info->set_n_clusters(
+            static_cast<int>(func_profile_info->layout_info.bb_chains.size()));
+        optimization_info->set_original_intra_ext_tsp_score(
+            func_profile_info->layout_info.original_score.intra_score);
+        optimization_info->set_optimized_intra_ext_tsp_score(
+            func_profile_info->layout_info.optimized_score.intra_score);
+        for (const auto& prefetch_hint :
+             func_profile_info->prefetch_info.prefetch_hints) {
+          auto* prefetch_hint_pb = optimization_info->add_prefetch_hints();
+          prefetch_hint_pb->set_site_bb_id(prefetch_hint.site_bb_id);
+          prefetch_hint_pb->set_site_callsite_index(
+              prefetch_hint.site_callsite_index);
+          prefetch_hint_pb->set_target_function_name(
+              profile.program_cfg
+                  ->GetCfgByIndex(prefetch_hint.target_function_index)
+                  ->GetPrimaryName()
+                  .str());
+          prefetch_hint_pb->set_target_bb_id(prefetch_hint.target_bb_id);
+          prefetch_hint_pb->set_target_callsite_index(
+              prefetch_hint.target_callsite_index);
+        }
+        for (const auto& prefetch_target :
+             func_profile_info->prefetch_info.prefetch_targets) {
+          auto* prefetch_target_pb = optimization_info->add_prefetch_targets();
+          prefetch_target_pb->set_bb_id(prefetch_target.bb_id);
+          prefetch_target_pb->set_callsite_index(
+              prefetch_target.callsite_index);
+        }
+      }
+      absl::flat_hash_map<uint32_t, BbEntryPb*> id_to_bb_entry_pb;
+      for (auto& bb_range : *func_map->mutable_bb_ranges()) {
+        for (auto& bb_entry : *bb_range.mutable_bb_entries()) {
+          id_to_bb_entry_pb[bb_entry.id()] = &bb_entry;
+        }
+      }
+      cfg->ForEachNodeRef([&](const CFGNode& node) {
+        auto bb_entry_it = id_to_bb_entry_pb.find(node.bb_id());
+        if (bb_entry_it == id_to_bb_entry_pb.end()) return;
+        bb_entry_it->second->set_post_link_frequency(node.CalculateFrequency());
+
+        // Build a map for efficient lookup of existing edges.
+        absl::flat_hash_map<uint32_t, EdgePb*> dest_bb_id_to_edge_pb;
+        for (auto& edge_pb : *bb_entry_it->second->mutable_edges()) {
+          dest_bb_id_to_edge_pb[edge_pb.dest_bb_id()] = &edge_pb;
+        }
+
+        node.ForEachOutEdgeRef([&](const CFGEdge& edge) {
+          if (!edge.IsBranchOrFallthrough()) return;
+          auto edge_pb_it = dest_bb_id_to_edge_pb.find(edge.sink()->bb_id());
+          if (edge_pb_it != dest_bb_id_to_edge_pb.end()) {
+            edge_pb_it->second->set_post_link_frequency(edge.weight());
+          } else {
+            auto* edge_pb = bb_entry_it->second->add_edges();
+            edge_pb->set_dest_bb_id(edge.sink()->bb_id());
+            edge_pb->set_post_link_frequency(edge.weight());
+          }
+        });
+      });
+    }
+  }
+
+  std::ofstream cfg_dump_os(std::string(options.cfg_dump_file_name()),
+                            std::ofstream::out | std::ofstream::binary);
+  CHECK(cfg_dump_os.good())
+      << "Failed to open " << options.cfg_dump_file_name() << " for writing.";
+  bb_addr_map_pb.SerializeToOstream(&cfg_dump_os);
 }
 
 // Writes the intra-function edge profile of `cfg` into `out` in a single line
@@ -349,8 +390,9 @@ absl::Status PropellerProfileWriter::Write(
       }
     }
   }
-  if (options_.has_cfg_dump_dir_name())
-    DumpCfgs(profile, options_.cfg_dump_dir_name());
+  if (options_.has_cfg_dump_file_name()) {
+    DumpCfgs(profile, options_);
+  }
   return absl::OkStatus();
 }
 }  // namespace propeller
