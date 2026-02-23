@@ -14,6 +14,8 @@
 
 #include "propeller/profile_generator.h"
 
+#include <fstream>
+#include <ios>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,6 +28,7 @@
 #include "absl/strings/string_view.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "propeller/bb_addr_map.pb.h"
 #include "propeller/file_helpers.h"
 #include "propeller/file_perf_data_provider.h"
 #include "propeller/parse_text_proto.h"

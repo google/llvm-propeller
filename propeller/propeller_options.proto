@@ -61,9 +61,9 @@ message PropellerOptions {
   // propeller cluster file.
   bool verbose_cluster_output = 8 [default = false];
 
-  // Directory path for dumping the (hot) cfgs in dot format. Dumping won't be
-  // done if field is unset.
-  string cfg_dump_dir_name = 9;
+  // File path for dumping the cfgs in protobuf format. Dumping won't be done if
+  // field is unset.
+  string cfg_dump_file_name = 9;
 
   // Start a http-server to handle /statusz.
   bool http = 10 [default = false];

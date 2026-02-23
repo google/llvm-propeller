@@ -18,6 +18,7 @@
 add_library(propeller_lib OBJECT
   # keep-sorted start
   addr2cu.cc
+  bb_addr_map.cc
   binary_address_mapper.cc
   binary_content.cc
   branch_aggregation.cc

@@ -661,11 +661,42 @@ cc_library(
     ],
 )
 
+proto_library(
+    name = "bb_addr_map_proto",
+    srcs = ["bb_addr_map.proto"],
+)
+
+cc_proto_library(
+    name = "bb_addr_map_cc_proto",
+    deps = [":bb_addr_map_proto"],
+)
+
+cc_library(
+    name = "bb_addr_map",
+    srcs = ["bb_addr_map.cc"],
+    hdrs = ["bb_addr_map.h"],
+    deps = [
+        ":addr2cu",
+        ":bb_addr_map_cc_proto",
+        ":binary_content",
+        ":propeller_options_cc_proto",
+        ":propeller_statistics",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/log",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
+        "@llvm-project//llvm:Object",
+    ],
+)
+
 cc_library(
     name = "profile_writer",
     srcs = ["profile_writer.cc"],
     hdrs = ["profile_writer.h"],
     deps = [
+        ":bb_addr_map",
+        ":bb_addr_map_cc_proto",
         ":cfg",
         ":cfg_edge",
         ":cfg_id",
@@ -1738,6 +1769,7 @@ cc_test(
         "//propeller/testdata:sample_with_callsites.bin",
     ],
     deps = [
+        ":bb_addr_map_cc_proto",
         ":file_helpers",
         ":file_perf_data_provider",
         ":parse_text_proto",
