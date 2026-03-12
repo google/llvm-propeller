@@ -67,3 +67,7 @@ bazel test //propeller/...:all
     --cc_profile=/path/to/out/cc_profile.txt \
     --ld_profile=/path/to/out/ld_profile.txt
 ```
+
+Propeller generates compiler profiles (`cc_profile.txt`) and linker profiles
+(`ld_profile.txt`). The compiler profile is used by LLVM to guide optimizations
+and is described in [Propeller Profile Format](propeller_profile_format.md).
