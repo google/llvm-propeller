@@ -20,40 +20,42 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Twine.h"
 
 namespace propeller_file {
 
 // Reads the contents of the file `path` and returns it as a string.
-absl::StatusOr<std::string> GetContents(absl::string_view path);
+absl::StatusOr<std::string> GetContents(llvm::StringRef path);
 
 // Writes the given `contents` to the file `path`, overwriting any existing
 // file.
-absl::Status SetContents(absl::string_view path, absl::string_view contents);
+absl::Status SetContents(llvm::StringRef path, llvm::StringRef contents);
 
 // Reads the contents of the file `path` and returns it as a string, ignoring
 // lines starting with any of the given prefixes. This is useful for ignoring
 // comments in the file.
 absl::StatusOr<std::string> GetContentsIgnoringLines(
-    absl::string_view path,
-    absl::Span<const absl::string_view> ignored_line_prefixes);
+    llvm::StringRef path,
+    llvm::ArrayRef<llvm::StringRef> ignored_line_prefixes);
 
 // Reads a binary proto from the given path. The proto type is inferred from the
 // template parameter, which must be a proto message type.
 template <typename T>
-absl::StatusOr<T> GetBinaryProto(absl::string_view path) {
-  std::ifstream filestream((std::string(path)));
+absl::StatusOr<T> GetBinaryProto(llvm::StringRef path) {
+  std::ifstream filestream(path.str());
   if (!filestream) {
-    return absl::FailedPreconditionError(absl::StrCat(
-        "Failed to open file: ", path, ". State: ", filestream.rdstate()));
+    return absl::FailedPreconditionError(
+        (llvm::Twine("Failed to open file: ") + path +
+         ". State: " + llvm::Twine(filestream.rdstate()))
+            .str());
   }
 
   T proto;
   if (!proto.ParseFromIstream(&filestream)) {
     return absl::FailedPreconditionError(
-        absl::StrCat("Failed to parse proto from ", path));
+        (llvm::Twine("Failed to parse proto from ") + path).str());
   }
   return proto;
 }

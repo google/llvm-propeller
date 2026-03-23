@@ -19,71 +19,79 @@
 #include <sstream>
 #include <string>
 
-#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Twine.h"
 
 namespace propeller_file {
 
-absl::StatusOr<std::string> GetContents(absl::string_view path) {
+absl::StatusOr<std::string> GetContents(llvm::StringRef path) {
   // Open the file in binary mode if it exists.
-  std::ifstream filestream((std::string(path)), std::ios_base::binary);
+  std::ifstream filestream(path.str(), std::ios_base::binary);
   if (!filestream) {
-    return absl::FailedPreconditionError(absl::StrCat(
-        "Failed to open file: ", path, ". State: ", filestream.rdstate()));
+    return absl::FailedPreconditionError(
+        (llvm::Twine("Failed to open file: ") + path +
+         ". State: " + llvm::Twine(filestream.rdstate()))
+            .str());
   }
 
   // Buffer the read into a string stream.
   std::ostringstream stringstream;
   stringstream << filestream.rdbuf();
   if (!filestream || !stringstream) {
-    return absl::UnknownError(absl::StrCat("Error during read: ", path));
+    return absl::UnknownError(
+        (llvm::Twine("Error during read: ") + path).str());
   }
 
   return stringstream.str();
 }
 
-absl::Status SetContents(absl::string_view path, absl::string_view contents) {
-  std::ofstream filestream((std::string(path)), std::ios_base::binary);
+absl::Status SetContents(llvm::StringRef path, llvm::StringRef contents) {
+  std::ofstream filestream(path.str(), std::ios_base::binary);
   if (!filestream) {
-    return absl::FailedPreconditionError(absl::StrCat(
-        "Failed to open file: ", path, ". State: ", filestream.rdstate()));
+    return absl::FailedPreconditionError(
+        (llvm::Twine("Failed to open file: ") + path +
+         ". State: " + llvm::Twine(filestream.rdstate()))
+            .str());
   }
 
-  filestream << contents;
+  filestream << contents.str();
   if (filestream.fail() || filestream.bad()) {
-    return absl::UnknownError(absl::StrCat("Failed to write to file: ", path));
+    return absl::UnknownError(
+        (llvm::Twine("Failed to write to file: ") + path).str());
   }
   return absl::OkStatus();
 }
 
 absl::StatusOr<std::string> GetContentsIgnoringLines(
-    absl::string_view path,
-    absl::Span<const absl::string_view> ignored_line_prefixes) {
+    llvm::StringRef path,
+    llvm::ArrayRef<llvm::StringRef> ignored_line_prefixes) {
   // Open the file in binary mode if it exists.
-  std::ifstream filestream((std::string(path)), std::ios_base::binary);
+  std::ifstream filestream(path.str(), std::ios_base::binary);
   if (!filestream) {
-    return absl::FailedPreconditionError(absl::StrCat(
-        "Failed to open file: ", path, ". State: ", filestream.rdstate()));
+    return absl::FailedPreconditionError(
+        (llvm::Twine("Failed to open file: ") + path +
+         ". State: " + llvm::Twine(filestream.rdstate()))
+            .str());
   }
 
   std::string contents;
   std::string line;
   while (std::getline(filestream, line)) {
-    if (absl::c_any_of(ignored_line_prefixes,
-                       [&line](absl::string_view ignored_prefix) {
-                         return line.starts_with(ignored_prefix);
-                       })) {
+    if (llvm::any_of(ignored_line_prefixes,
+                     [&line](llvm::StringRef ignored_prefix) {
+                       return llvm::StringRef(line).starts_with(ignored_prefix);
+                     })) {
       continue;
     }
-    absl::StrAppend(&contents, line);
+    contents += line;
     // If a newline was encountered (eof was not reached), add a newline to the
     // output.
     if (filestream.eof()) return contents;
-    absl::StrAppend(&contents, "\n");
+    contents += '\n';
   }
   return contents;
 }

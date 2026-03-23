@@ -17,9 +17,9 @@
 #include <string>
 
 #include "absl/status/status_matchers.h"
-#include "absl/strings/str_cat.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/Twine.h"
 #include "propeller/status_testing_macros.h"
 
 namespace propeller_file {
@@ -30,13 +30,15 @@ using ::absl_testing::IsOkAndHolds;
 using ::testing::Not;
 
 TEST(FileHelpersTest, SetContents) {
-  std::string path = absl::StrCat(::testing::TempDir(), "/test_file.txt");
+  std::string path =
+      (llvm::Twine(::testing::TempDir()) + "/test_file.txt").str();
   EXPECT_OK(SetContents(path, "test content\nsecond line"));
   EXPECT_THAT(GetContents(path), IsOkAndHolds("test content\nsecond line"));
 }
 
 TEST(FileHelpersTest, SetContentsOverwrites) {
-  std::string path = absl::StrCat(::testing::TempDir(), "/overwrite_file.txt");
+  std::string path =
+      (llvm::Twine(::testing::TempDir()) + "/overwrite_file.txt").str();
   EXPECT_OK(SetContents(path, "initial content"));
   EXPECT_OK(SetContents(path, "new content"));
   EXPECT_THAT(GetContents(path), IsOkAndHolds("new content"));

@@ -19,7 +19,7 @@
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace propeller {
 
@@ -36,7 +36,7 @@ struct CodePrefetchDirective {
 // Each line in the file is expected to contain two comma-separated hexadecimal
 // or decimal addresses. Lines starting with '#' are ignored as comments.
 absl::StatusOr<std::vector<CodePrefetchDirective>> ReadCodePrefetchDirectives(
-    absl::string_view prefetch_directives_path);
+    llvm::StringRef prefetch_directives_path);
 
 }  // namespace propeller
 
