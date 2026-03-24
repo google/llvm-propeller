@@ -82,7 +82,7 @@ jobs:
         run: bazel build //propeller/...:all
 
       - name: Test (Bazel)
-        run: bazel test //propeller/...:all
+        run: bazel test --test_output=errors //propeller/...:all
 
       - name: Configure (CMake)
         run: cmake -G Ninja -B build
