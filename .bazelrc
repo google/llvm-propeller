@@ -20,6 +20,9 @@ common --registry=https://raw.githubusercontent.com/bazelbuild/bazel-central-reg
 # LINT.IfChange(cpp_standard)
 build --cxxopt='-std=c++20'
 build --host_cxxopt=-std=c++20
+# TODO(b/495868088): Unpin libstdc++ from version 14 once LLVM builds with 15.2.
+build --cxxopt='--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/14'
+build --linkopt='--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/14'
 # LINT.ThenChange(CMakeLists.txt:cpp_standard)
 
 # Load user-specific configuration, if any.
