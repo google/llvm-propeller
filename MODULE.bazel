@@ -72,7 +72,7 @@ new_git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl"
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 # LINT.IfChange(llvm_commit_hash)
-LLVM_COMMIT = "c6bb1afbc5086c3f483921c575262bd95c346e5b"
+LLVM_COMMIT = "67790d3fb06b184b7be9c4d3e36ab01f0ac4198e"
 # LINT.ThenChange(CMake/LLVM/LLVM.cmake:commit_hash)
 
 new_git_repository(
