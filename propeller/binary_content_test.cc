@@ -41,9 +41,11 @@ using ::testing::Optional;
 using ::testing::Pair;
 using ::testing::SizeIs;
 
+// google3-only(Using a constant makes path translation easier for Copybara.)
+constexpr absl::string_view kTestDataDir = "_main/propeller/testdata/";
+
 TEST(BinaryContentTest, BuildId) {
-  const std::string binary = absl::StrCat(::testing::SrcDir(),
-                                          "_main/propeller/testdata/"
+  const std::string binary = absl::StrCat(::testing::SrcDir(), kTestDataDir,
                                           "llvm_function_samples.binary");
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(binary));
@@ -53,8 +55,7 @@ TEST(BinaryContentTest, BuildId) {
 
 TEST(BinaryContentTest, PieAndNoBuildId) {
   const std::string binary =
-      absl::StrCat(::testing::SrcDir(),
-                   "_main/propeller/testdata/"
+      absl::StrCat(::testing::SrcDir(), kTestDataDir,
                    "propeller_barebone_pie_nobuildid.bin");
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(binary));
@@ -63,8 +64,8 @@ TEST(BinaryContentTest, PieAndNoBuildId) {
 }
 
 TEST(GetSymbolAddressTest, SymbolFound) {
-  const std::string binary = absl::StrCat(
-      ::testing::SrcDir(), "_main/propeller/testdata/propeller_sample_1.bin");
+  const std::string binary =
+      absl::StrCat(::testing::SrcDir(), kTestDataDir, "propeller_sample_1.bin");
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(binary));
   EXPECT_THAT(GetSymbolAddress(*binary_content->object_file, "main"),
@@ -72,8 +73,8 @@ TEST(GetSymbolAddressTest, SymbolFound) {
 }
 
 TEST(GetSymbolAddressTest, SymbolNotFound) {
-  const std::string binary = absl::StrCat(
-      ::testing::SrcDir(), "_main/propeller/testdata/propeller_sample_1.bin");
+  const std::string binary =
+      absl::StrCat(::testing::SrcDir(), kTestDataDir, "propeller_sample_1.bin");
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(binary));
   EXPECT_THAT(
@@ -82,8 +83,7 @@ TEST(GetSymbolAddressTest, SymbolNotFound) {
 }
 
 TEST(ReadBbAddrMapTest, ReadBbAddrMap) {
-  const std::string binary = absl::StrCat(::testing::SrcDir(),
-                                          "_main/propeller/testdata/"
+  const std::string binary = absl::StrCat(::testing::SrcDir(), kTestDataDir,
                                           "sample_pgo_analysis_map.bin");
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(binary));
@@ -97,8 +97,7 @@ TEST(ReadBbAddrMapTest, ReadBbAddrMap) {
 TEST(ThunkSymbolsTest, X86NoThunks) {
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BinaryContent> binary_content,
-      GetBinaryContent(absl::StrCat(::testing::SrcDir(),
-                                    "_main/propeller/testdata/"
+      GetBinaryContent(absl::StrCat(::testing::SrcDir(), kTestDataDir,
                                     "propeller_sample_1.bin")));
   EXPECT_THAT(ReadThunkSymbols(*binary_content), SizeIs(0));
 }
