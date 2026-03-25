@@ -584,8 +584,14 @@ std::optional<int> BinaryAddressMapper::FindBbHandleIndexUsingBinaryAddress(
       return it - bb_handles_.begin();
     }
     case BranchDirection::kFrom: {
-      DCHECK_NE(GetBBEntry(*it).Size, 0);
-      return it - bb_handles_.begin();
+      auto from_it = it;
+      while (GetBBEntry(*from_it).Size == 0 && from_it != bb_handles_.begin() &&
+             GetAddress(*std::prev(from_it)) == address &&
+             std::prev(from_it)->function_index == it->function_index) {
+        --from_it;
+      }
+      if (GetBBEntry(*from_it).Size == 0) return std::nullopt;
+      return from_it - bb_handles_.begin();
     }
       LOG(FATAL) << "Invalid edge direction.";
   }
