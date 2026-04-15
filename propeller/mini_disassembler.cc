@@ -63,7 +63,7 @@ MiniDisassembler::Create(const llvm::object::ObjectFile* object_file) {
         "createMCRegInfo failed for triple '%s'", triple.getArchName()));
   }
   disassembler->asm_info_ = absl::WrapUnique(target->createMCAsmInfo(
-      *disassembler->mri_, triple, llvm::MCTargetOptions()));
+      *disassembler->mri_, triple, disassembler->options_));
   if (disassembler->asm_info_ == nullptr) {
     return absl::FailedPreconditionError(absl::StrFormat(
         "createMCAsmInfo failed for triple '%s'", triple.getArchName()));

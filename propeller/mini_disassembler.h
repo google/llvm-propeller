@@ -56,6 +56,7 @@ class MiniDisassembler {
       : object_file_(object_file) {}
 
   const llvm::object::ObjectFile* object_file_;
+  llvm::MCTargetOptions options_;
   std::unique_ptr<const llvm::MCRegisterInfo> mri_;
   std::unique_ptr<const llvm::MCAsmInfo> asm_info_;
   std::unique_ptr<const llvm::MCSubtargetInfo> sti_;
