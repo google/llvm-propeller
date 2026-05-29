@@ -240,8 +240,10 @@ absl::Status PropellerProfileWriter::Write(
     }
 
     // Allocate the symbol order vector
-    std::vector<std::pair<llvm::SmallVector<llvm::StringRef, 3>,
-                          std::optional<unsigned>>>
+    // std::vector<std::pair<llvm::SmallVector<llvm::StringRef, 3>,
+    //                       std::optional<unsigned>>>
+    std::vector<std::vector<std::pair<llvm::SmallVector<llvm::StringRef, 3>,
+                                      std::optional<unsigned>>>>
         symbol_order(total_chains);
     // Allocate the cold symbol order vector equally sized as
     // function_layout_info, as there is (at most) one cold cluster per
@@ -301,27 +303,48 @@ absl::Status PropellerProfileWriter::Write(
       const std::vector<FunctionLayoutInfo::BbChain>& chains =
           func_profile_info.layout_info.bb_chains;
       if (!chains.empty()) {
+        unsigned cluster_id_counter = 0;
         for (unsigned chain_id = 0; chain_id < chains.size(); ++chain_id) {
           auto& chain = chains[chain_id];
           std::vector<FullIntraCfgId> bb_ids_in_chain =
               chains[chain_id].GetAllBbs();
-          // If a chain starts with zero BB index (function entry basic block),
-          // the function name is sufficient for section ordering. Otherwise,
-          // the chain number is required.
-          symbol_order[chain.layout_index] =
-              std::pair<llvm::SmallVector<llvm::StringRef, 3>,
-                        std::optional<unsigned>>(
-                  cfg->names(),
-                  bb_ids_in_chain.front().intra_cfg_id.bb_index == 0
-                      ? std::optional<unsigned>()
-                      : chain_id);
-          for (int bbi = 0; bbi < bb_ids_in_chain.size(); ++bbi) {
-            const auto& full_bb_id = bb_ids_in_chain[bbi];
-            cc_profile_os << (bbi != 0 ? " "
-                                       : profile_encoding_.cluster_specifier)
-                          << full_bb_id.profile_bb_id();
+
+          bool split_all_bbs =
+              options_.code_layout_params().split_all_basic_blocks() &&
+              (options_.code_layout_params().use_ml() ||
+               options_.code_layout_params().log_decisions());
+          if (split_all_bbs) {
+            // Each basic block in a separate cluster.
+            for (int bbi = 0; bbi < bb_ids_in_chain.size(); ++bbi) {
+              const auto& full_bb_id = bb_ids_in_chain[bbi];
+              cc_profile_os << profile_encoding_.cluster_specifier
+                            << full_bb_id.profile_bb_id() << "\n";
+              symbol_order[chain.layout_index].push_back(
+                  {cfg->names(),
+                   full_bb_id.intra_cfg_id.bb_index == 0
+                       ? std::optional<unsigned>()
+                       : std::optional<unsigned>(cluster_id_counter)});
+              cluster_id_counter++;
+            }
+          } else {
+            // If a chain starts with zero BB index (function entry basic
+            // block), the function name is sufficient for section ordering.
+            // Otherwise, the chain number is required.
+            symbol_order[chain.layout_index].push_back(
+                {cfg->names(),
+                 bb_ids_in_chain.front().intra_cfg_id.bb_index == 0
+                     ? std::optional<unsigned>()
+                     : std::optional<unsigned>(cluster_id_counter)});
+            cluster_id_counter++;
+
+            for (int bbi = 0; bbi < bb_ids_in_chain.size(); ++bbi) {
+              const auto& full_bb_id = bb_ids_in_chain[bbi];
+              cc_profile_os
+                  << (bbi != 0 ? " " : profile_encoding_.cluster_specifier)
+                  << full_bb_id.profile_bb_id();
+            }
+            cc_profile_os << "\n";
           }
-          cc_profile_os << "\n";
         }
         cold_symbol_order[func_profile_info.layout_info
                               .cold_chain_layout_index] = function_index;
@@ -347,15 +370,18 @@ absl::Status PropellerProfileWriter::Write(
       if (options_.write_bb_hash()) WriteBBHash(*cfg, cc_profile_os);
     }
 
-    for (const auto& [func_names, chain_id] : symbol_order) {
-      // Print the symbol names corresponding to every function name alias. This
-      // guarantees we get the right order regardless of which function name is
-      // picked by the compiler.
-      for (auto& func_name : func_names) {
-        ld_profile_os << func_name.str();
-        if (chain_id.has_value())
-          ld_profile_os << ".__part." << chain_id.value();
-        ld_profile_os << "\n";
+    for (const auto& symbols : symbol_order) {
+      for (const auto& [func_names, chain_id] : symbols) {
+        // Print the symbol names corresponding to every function name alias.
+        // This guarantees we get the right order regardless of which function
+        // name is picked by the compiler.
+
+        for (auto& func_name : func_names) {
+          ld_profile_os << func_name.str();
+          if (chain_id.has_value())
+            ld_profile_os << ".__part." << chain_id.value();
+          ld_profile_os << "\n";
+        }
       }
     }
 

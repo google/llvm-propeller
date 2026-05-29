@@ -36,6 +36,7 @@
 #include "propeller/program_cfg.h"
 #include "propeller/propeller_options.pb.h"
 #include "propeller/propeller_statistics.h"
+// #include "propeller/ml_code_layout.h"
 
 namespace propeller {
 
@@ -182,8 +183,19 @@ SectionLayoutInfo CodeLayout::GenerateLayout() {
                         .cold_chain_layout_index = cold_chain_layout_index});
             if (inserted) ++cold_chain_layout_index;
             // Start a new chain and increment the global layout index.
-            func_layout_info_it->second.bb_chains.emplace_back(layout_index++);
+            auto& bb_chain = func_layout_info_it->second.bb_chains.emplace_back(
+                layout_index++);
+            bb_chain.is_entry = node.is_entry();
           }
+          auto& current_chain = func_layout_info_it->second.bb_chains.back();
+          current_chain.size += node.size();
+          current_chain.freq += node.CalculateFrequency();
+          current_chain.in_degree +=
+              node.intra_ins().size() + node.inter_ins().size();
+          current_chain.out_degree +=
+              node.intra_outs().size() + node.inter_outs().size();
+          current_chain.is_entry |= node.is_entry();
+
           // Start a new BB bundle if this either this is the first node in the
           // bundle, or if we have created a new chain.
           if (i == 0 ||
@@ -214,10 +226,25 @@ SectionLayoutInfo CodeLayout::GenerateLayout() {
   // chain ordering.
   // TODO(rahmanl): Test the chain order once we have interproc-reordering.
   for (auto& [unused, func_layout_info] : function_layout_info_map) {
+    absl::flat_hash_map<int, double> chain_scores;
+
     absl::c_sort(func_layout_info.bb_chains,
-                 [](const FunctionLayoutInfo::BbChain& a,
-                    const FunctionLayoutInfo::BbChain& b) {
-                   return a.GetFirstBb().bb_id < b.GetFirstBb().bb_id;
+                 [this, &chain_scores](const FunctionLayoutInfo::BbChain& a,
+                                       const FunctionLayoutInfo::BbChain& b) {
+                   if (code_layout_scorer_.code_layout_params().use_ml()) {
+                     //  double score_a = chain_scores.at(a.GetFirstBb().bb_id);
+                     //  double score_b = chain_scores.at(b.GetFirstBb().bb_id);
+
+                     //  if (score_a != score_b) {
+                     //    return score_a < score_b;
+                     //  }
+
+                     return a.GetFirstBb().bb_id < b.GetFirstBb().bb_id;
+                     // return a.layout_index < b.layout_index;
+
+                   } else {
+                     return a.GetFirstBb().bb_id < b.GetFirstBb().bb_id;
+                   }
                  });
   }
 

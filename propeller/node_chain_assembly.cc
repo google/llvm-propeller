@@ -32,6 +32,24 @@
 
 namespace propeller {
 
+namespace {
+int GetEdgeType(const CFGEdge& edge) {
+  if (edge.IsCall() || edge.IsReturn()) return 3;
+  if (edge.IsBranchOrFallthrough()) {
+    const CFGNode* src = edge.src();
+    const CFGNode* sink = edge.sink();
+    if (src->intra_outs().size() > 2) return 3;
+
+    bool is_fallthrough_target = (sink->bb_index() == src->bb_index() + 1);
+
+    if (is_fallthrough_target) return 0;
+    if (src->intra_outs().size() == 2) return 1;
+    return 2;
+  }
+  return 3;
+}
+}  // namespace
+
 absl::StatusOr<NodeChainAssembly> NodeChainAssembly::BuildNodeChainAssembly(
     const NodeToBundleMapper& bundle_mapper,
     const PropellerCodeLayoutScorer& scorer, NodeChain& split_chain,
@@ -50,25 +68,123 @@ absl::StatusOr<NodeChainAssembly> NodeChainAssembly::BuildNodeChainAssembly(
   }
   NodeChainAssembly assembly(bundle_mapper, scorer, split_chain, unsplit_chain,
                              options.merge_order, options.slice_pos);
-  // If `inter_function_ordering = false`, omit assemblies which place the entry
-  // node in the middle of the chain. Placing the entry block in the middle is
-  // allowed. However, it requires multiple hot function parts (sections) as the
-  // function entry always marks the beginning of a section.
+
+  bool entry_is_at_front = assembly.GetFirstNode()->is_entry();
+  bool entry_exists = (split_chain.GetFirstNode()->is_entry() ||
+                       unsplit_chain.GetFirstNode()->is_entry());
+  bool is_legal = true;
   if (!scorer.code_layout_params().inter_function_reordering() &&
-      (split_chain.GetFirstNode()->is_entry() ||
-       unsplit_chain.GetFirstNode()->is_entry()) &&
-      !assembly.GetFirstNode()->is_entry()) {
-    return absl::FailedPreconditionError(
-        "Assembly places the entry block in the middle.");
+      entry_exists && !entry_is_at_front) {
+    is_legal = false;
+  }
+  assembly.set_is_legal(is_legal);
+
+  if (!options.is_mlgo_log_enabled) {
+    if (!is_legal) {
+      return absl::FailedPreconditionError(
+          "Assembly places the entry block in the middle.");
+    }
+    if (assembly.score_gain() < 0) {
+      return absl::FailedPreconditionError(absl::StrFormat(
+          "Assembly has negative score gain: %f", assembly.score_gain()));
+    } else if (assembly.score_gain() == 0 && options.error_on_zero_score_gain) {
+      return absl::FailedPreconditionError("Assembly has zero score gain.");
+    }
   }
 
-  // Also omit assemblies without positive gain.
-  if (assembly.score_gain() < 0) {
-    return absl::FailedPreconditionError(absl::StrFormat(
-        "Assembly has negative score gain: %f", assembly.score_gain()));
-  } else if (assembly.score_gain() == 0 && options.error_on_zero_score_gain) {
-    return absl::FailedPreconditionError("Assembly has zero score gain.");
+  // Calculate and cache seam edge weights and distances for MLGO features.
+  const auto& slices = assembly.slices();
+
+  auto GetInterSliceMetrics = [&](int src_slice_idx, int sink_slice_idx) {
+    float total_weight = 0.0f;
+    float avg_distance = 0.0f;
+    int edge_count = 0;
+    std::array<float, 4> edge_types = {0.0f, 0.0f, 0.0f, 0.0f};
+
+    const auto& slice_src = slices[src_slice_idx];
+    for (auto bundle_it = slice_src.begin_pos();
+         bundle_it != slice_src.end_pos(); ++bundle_it) {
+      for (const CFGNode* src_node : (*bundle_it)->nodes()) {
+        src_node->ForEachOutEdgeRef([&](const CFGEdge& edge) {
+          if (edge.weight() == 0) return;
+          if (edge.IsReturn()) return;
+          if (scorer.code_layout_params().inter_function_reordering()) {
+            if (edge.inter_section()) return;
+          } else {
+            if (edge.IsCall()) return;
+          }
+
+          const auto& src_mapping =
+              bundle_mapper.GetBundleMappingEntry(edge.src());
+          auto opt_src_slice_idx =
+              assembly.FindSliceIndex(edge.src(), src_mapping);
+          if (!opt_src_slice_idx.has_value())
+            return;  // Check 2: Skip if src not in assembly!
+
+          const auto& mapping =
+              bundle_mapper.GetBundleMappingEntry(edge.sink());
+          auto opt_sink_slice_idx =
+              assembly.FindSliceIndex(edge.sink(), mapping);
+          if (opt_sink_slice_idx.has_value() &&
+              *opt_sink_slice_idx == sink_slice_idx) {
+            float w = static_cast<float>(edge.weight());
+            total_weight += w;
+            avg_distance +=
+                std::abs(assembly.ComputeEdgeDistance(bundle_mapper, edge)) * w;
+            edge_count++;
+
+            int type = GetEdgeType(edge);
+            if (type >= 0 && type < 4) edge_types[type] += w;
+          }
+        });
+      }
+    }
+    return std::make_tuple(
+        total_weight, total_weight > 0 ? avg_distance / total_weight : 0.0f,
+        edge_types);
+  };
+
+  auto GetTwoWayMetrics = [&](int src_idx, int snk_idx) {
+    auto [w_fwd, d_fwd, t_fwd] =
+        GetInterSliceMetrics(src_idx, snk_idx);  // Forward!
+    auto [w_bwd, d_bwd, t_bwd] =
+        GetInterSliceMetrics(snk_idx, src_idx);  // Backward!
+
+    float total_w = w_fwd + w_bwd;
+    float avg_d = 0.0f;
+    if (total_w > 0) {
+      avg_d = (w_fwd * d_fwd + w_bwd * d_bwd) / total_w;
+    } else {
+      // GEOMETRIC FIX: If no edges exist, the distance is the size of the
+      // middle slice
+      if (src_idx == 0 && snk_idx == 2)
+        avg_d = static_cast<float>(slices[1].size());
+      else if (src_idx == 2 && snk_idx == 0)
+        avg_d = static_cast<float>(slices[1].size());
+    }
+
+    std::array<float, 4> combined_t = {0.0f, 0.0f, 0.0f, 0.0f};
+    for (int i = 0; i < 4; ++i) combined_t[i] = t_fwd[i] + t_bwd[i];
+
+    return std::make_tuple(total_w, avg_d, combined_t);
+  };
+
+  if (slices.size() >= 2) {
+    auto [w1, d1, t1] = GetTwoWayMetrics(0, 1);
+    assembly.set_seam_metrics(0, w1, d1);
+
+    if (slices.size() >= 3) {
+      auto [w2, d2, t2] = GetTwoWayMetrics(1, 2);
+      auto [wb, db, tb] = GetTwoWayMetrics(0, 2);
+      assembly.set_seam_metrics(1, w2, d2);
+      assembly.set_seam_metrics(2, wb, db);  // Dedicated Broken Bond setter
+      assembly.set_all_edge_types(t1, t2,
+                                  tb);  // Atomic update to prevent data loss
+    } else {
+      assembly.set_all_edge_types(t1, {0, 0, 0, 0}, {0, 0, 0, 0});
+    }
   }
+
   return assembly;
 }
 
@@ -113,6 +229,7 @@ std::vector<NodeChainSlice> NodeChainAssembly::ConstructSlices() const {
 std::optional<int> NodeChainAssembly::FindSliceIndex(
     const CFGNode* node,
     const NodeToBundleMapper::BundleMappingEntry& bundle_mapping) const {
+  if (!bundle_mapping.bundle) return std::nullopt;
   int offset = bundle_mapping.GetNodeOffset();
   const NodeChain& chain = *bundle_mapping.bundle->chain_mapping().chain;
   if (chain.id() == unsplit_chain().id()) return unsplit_chain_slice_index();
@@ -167,10 +284,9 @@ std::optional<int> NodeChainAssembly::FindSliceIndex(
   return std::nullopt;
 }
 
-// Returns the score contribution of a single edge for this chain assembly.
-double NodeChainAssembly::ComputeEdgeScore(
-    const NodeToBundleMapper& bundle_mapper,
-    const PropellerCodeLayoutScorer& scorer, const CFGEdge& edge) const {
+// Returns the potential distance of a single edge for this chain assembly.
+int NodeChainAssembly::ComputeEdgeDistance(
+    const NodeToBundleMapper& bundle_mapper, const CFGEdge& edge) const {
   const auto& src_bundle_info = bundle_mapper.GetBundleMappingEntry(edge.src());
   const auto& sink_bundle_info =
       bundle_mapper.GetBundleMappingEntry(edge.sink());
@@ -202,7 +318,14 @@ double NodeChainAssembly::ComputeEdgeScore(
     else if (src_slice_idx == 2 && sink_slice_idx == 0)
       src_sink_distance -= slices_[1].size();
   }
-  return scorer.GetEdgeScore(edge, src_sink_distance);
+  return src_sink_distance;
+}
+
+// Returns the score contribution of a single edge for this chain assembly.
+double NodeChainAssembly::ComputeEdgeScore(
+    const NodeToBundleMapper& bundle_mapper,
+    const PropellerCodeLayoutScorer& scorer, const CFGEdge& edge) const {
+  return scorer.GetEdgeScore(edge, ComputeEdgeDistance(bundle_mapper, edge));
 }
 
 double NodeChainAssembly::ComputeInterChainScore(

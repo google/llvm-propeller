@@ -42,12 +42,15 @@
 #include "propeller/chain_cluster_builder.h"
 #include "propeller/chain_merge_order.h"
 #include "propeller/code_layout_scorer.h"
+#include "propeller/file_helpers.h"
 #include "propeller/function_layout_info.h"
 #include "propeller/function_layout_info_matchers.h"
 #include "propeller/mock_program_cfg_builder.h"
 #include "propeller/node_chain.h"
 #include "propeller/node_chain_assembly.h"
 #include "propeller/node_chain_builder.h"
+#include "propeller/profile.h"
+#include "propeller/profile_writer.h"
 #include "propeller/program_cfg.h"
 #include "propeller/propeller_options.pb.h"
 #include "propeller/propeller_statistics.h"
@@ -2158,5 +2161,158 @@ TEST(CodeLayoutTest, PrioritizesFallthroughWithAlwaysFallthroughBonus) {
                    _, _, _))));
   }
 }
+TEST(CodeLayoutTest, MLFeaturesCalculation) {
+  std::unique_ptr<ProgramCfg> program_cfg = BuildFromCfgArg(
+      {.cfg_args = {{".foo_section",
+                     0,
+                     "foo",
+                     {{0x1000, 0, 0x10},   // size 16
+                      {0x1010, 1, 0x20},   // size 32
+                      {0x1030, 2, 0x08}},  // size 8
+                     {{0, 1, 100, CFGEdgeKind::kBranchOrFallthough},
+                      {1, 2, 50, CFGEdgeKind::kBranchOrFallthough},
+                      {2, 0, 30, CFGEdgeKind::kBranchOrFallthough}}}}});
+  PropellerCodeLayoutParameters params;
+  SectionLayoutInfo layout_info =
+      CodeLayout(params, program_cfg->GetCfgs()).GenerateLayout();
+
+  ASSERT_EQ(layout_info.layouts_by_function_index.size(), 1);
+  const auto& func_layout_info =
+      layout_info.layouts_by_function_index.begin()->second;
+
+  ASSERT_EQ(func_layout_info.bb_chains.size(), 1);
+  const auto& chain = func_layout_info.bb_chains.front();
+
+  EXPECT_EQ(chain.size, 56);
+  EXPECT_TRUE(chain.is_entry);
+  EXPECT_EQ(chain.in_degree, 3);
+  EXPECT_EQ(chain.out_degree, 3);
+  EXPECT_GT(chain.freq, 0);
+}
+
+TEST(NodeChainAssemblyTest, SeamMetricsCalculation) {
+  std::unique_ptr<ProgramCfg> program_cfg = BuildFromCfgArg(
+      {.cfg_args = {{".foo_section",
+                     0,
+                     "foo",
+                     {{0x1000, 0, 0x10},   // size 16
+                      {0x1010, 1, 0x20},   // size 32
+                      {0x1030, 2, 0x08}},  // size 8
+                     {{0, 1, 100, CFGEdgeKind::kBranchOrFallthough},
+                      {1, 2, 50, CFGEdgeKind::kBranchOrFallthough},
+                      {2, 0, 30, CFGEdgeKind::kBranchOrFallthough}}}}});
+
+  const ControlFlowGraph* cfg = program_cfg->GetCfgByIndex(0);
+  absl::flat_hash_map<InterCfgId, CFGNode*> nodes = GetCfgNodes(*cfg);
+
+  std::vector<CFGNode*> nodes1 = {nodes.at({0, {0, 0}}), nodes.at({0, {1, 0}})};
+  std::vector<CFGNode*> nodes2 = {nodes.at({0, {2, 0}})};
+
+  NodeChain chain1 = CreateNodeChain(nodes1);
+  NodeChain chain2 = CreateNodeChain(nodes2);
+
+  std::unique_ptr<NodeToBundleMapper> mapper =
+      NodeToBundleMapper::CreateNodeToBundleMapper(program_cfg->GetCfgs());
+  for (auto& bundle : chain1.mutable_node_bundles()) {
+    mapper->SetBundleMappingEntry(bundle->nodes().front(),
+                                  {.bundle = bundle.get(), .bundle_offset = 0});
+  }
+  for (auto& bundle : chain2.mutable_node_bundles()) {
+    mapper->SetBundleMappingEntry(bundle->nodes().front(),
+                                  {.bundle = bundle.get(), .bundle_offset = 0});
+  }
+
+  PropellerCodeLayoutParameters params;
+  PropellerCodeLayoutScorer scorer(params);
+
+  auto assembly_or = NodeChainAssembly::BuildNodeChainAssembly(
+      *mapper, scorer, chain1, chain2,
+      {.merge_order = ChainMergeOrder::kSU, .error_on_zero_score_gain = false});
+
+  ASSERT_OK(assembly_or);
+  const auto& assembly = *assembly_or;
+
+  EXPECT_EQ(assembly.seam1_edge_weight(), 80.0f);
+  EXPECT_EQ(assembly.seam1_edge_distance(), 21.0f);
+  EXPECT_EQ(assembly.seam2_edge_weight(), 0.0f);
+  EXPECT_EQ(assembly.broken_bond_weight(), 0.0f);
+}
+
+TEST(ProfileWriterTest, SplitAllBasicBlocksConstraint) {
+  std::unique_ptr<ProgramCfg> program_cfg = BuildFromCfgArg(
+      {.cfg_args = {{".text",
+                     0,
+                     "foo",
+                     {{0x1000, 0, 0x10},   // size 16
+                      {0x1010, 1, 0x20},   // size 32
+                      {0x1030, 2, 0x08}},  // size 8
+                     {{0, 1, 100, CFGEdgeKind::kBranchOrFallthough},
+                      {1, 2, 50, CFGEdgeKind::kBranchOrFallthough}}}}});
+
+  PropellerProfile profile;
+  profile.build_id = "test_build_id";
+  profile.program_cfg = std::move(program_cfg);
+
+  SectionProfileInfo section_profile_info;
+  FunctionProfileInfo func_profile_info;
+
+  FunctionLayoutInfo::BbChain chain(0);
+  FunctionLayoutInfo::BbBundle bundle;
+  bundle.full_bb_ids = {FullIntraCfgId{.bb_id = 0, .intra_cfg_id = {0, 0}},
+                        FullIntraCfgId{.bb_id = 1, .intra_cfg_id = {1, 0}},
+                        FullIntraCfgId{.bb_id = 2, .intra_cfg_id = {2, 0}}};
+  chain.bb_bundles.push_back(bundle);
+  func_profile_info.layout_info.bb_chains.push_back(chain);
+  func_profile_info.layout_info.cold_chain_layout_index = 0;
+
+  section_profile_info.profile_infos_by_function_index[0] = func_profile_info;
+  profile.profile_infos_by_section_name[".text"] = section_profile_info;
+
+  std::string cc_out = absl::StrCat(::testing::TempDir(), "/cc_out.txt");
+  std::string ld_out = absl::StrCat(::testing::TempDir(), "/ld_out.txt");
+
+  auto run_writer_and_get_cc_content = [&](bool split_all_bbs, bool use_ml,
+                                           bool log_decisions) {
+    PropellerOptions options;
+    options.set_cluster_out_name(cc_out);
+    options.set_symbol_order_out_name(ld_out);
+    options.set_cluster_out_version(ClusterEncodingVersion::VERSION_1);
+
+    auto* layout_params = options.mutable_code_layout_params();
+    layout_params->set_split_all_basic_blocks(split_all_bbs);
+    layout_params->set_use_ml(use_ml);
+    layout_params->set_log_decisions(log_decisions);
+
+    PropellerProfileWriter writer(options);
+    EXPECT_OK(writer.Write(profile));
+
+    absl::StatusOr<std::string> content_or =
+        propeller_file::GetContents(cc_out);
+    EXPECT_OK(content_or.status());
+    return *content_or;
+  };
+
+  // Case 1: split_all_basic_blocks = true, but ML is disabled (use_ml = false,
+  // log_decisions = false).
+  // It should NOT split basic blocks (i.e. they should be in a single cluster).
+  std::string cc_content_no_ml = run_writer_and_get_cc_content(
+      /*split_all_bbs=*/true, /*use_ml=*/false, /*log_decisions=*/false);
+  EXPECT_THAT(cc_content_no_ml, HasSubstr("c0 1 2"));
+  EXPECT_THAT(cc_content_no_ml, Not(HasSubstr("c0\nc1\nc2")));
+
+  // Case 2: split_all_basic_blocks = true, and use_ml = true.
+  // It SHOULD split basic blocks.
+  std::string cc_content_use_ml = run_writer_and_get_cc_content(
+      /*split_all_bbs=*/true, /*use_ml=*/true, /*log_decisions=*/false);
+  EXPECT_THAT(cc_content_use_ml, HasSubstr("c0\nc1\nc2"));
+
+  // Case 3: split_all_basic_blocks = true, and log_decisions = true.
+  // It SHOULD split basic blocks.
+  std::string cc_content_log = run_writer_and_get_cc_content(
+      /*split_all_bbs=*/true, /*use_ml=*/false, /*log_decisions=*/true);
+  EXPECT_THAT(cc_content_log, HasSubstr("c0\nc1\nc2"));
+}
+
 }  // namespace
+
 }  // namespace propeller
