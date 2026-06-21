@@ -90,8 +90,8 @@ MiniDisassembler::Create(const llvm::object::ObjectFile* object_file) {
   }
 
   disassembler->ctx_ = std::make_unique<llvm::MCContext>(
-      triple, *disassembler->asm_info_, *disassembler->mri_,
-      *disassembler->sti_);
+      triple, *disassembler->asm_info_, disassembler->mri_.get(),
+      disassembler->sti_.get());
   disassembler->disasm_ = absl::WrapUnique(
       target->createMCDisassembler(*disassembler->sti_, *disassembler->ctx_));
   if (disassembler->disasm_ == nullptr)
