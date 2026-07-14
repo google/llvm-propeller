@@ -15,6 +15,7 @@
 #include "propeller/path_clone_evaluator.h"
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -43,6 +44,8 @@
 namespace propeller {
 
 namespace {
+constexpr double kScoreGainPrecision = 100000.0;
+
 // Returns the penalty for cloning `path_cloning`. The total penalty is the
 // base penalty (relative to the cloned size) plus the interval-based cache
 // pressure penalty.
@@ -292,6 +295,9 @@ absl::StatusOr<EvaluatedPathCloning> EvaluateCloning(
       clone_layout_info.optimized_score.intra_score -
       paths_dropped_layout_info.optimized_score.intra_score -
       GetClonePenalty(cfg_builder.cfg(), path_profile_options, path_cloning);
+  // Round the score gain to the precision of kScoreGainPrecision to avoid
+  // the non-determinism from floating point imprecisions.
+  score_gain = round(score_gain * kScoreGainPrecision) / kScoreGainPrecision;
   if (score_gain < min_score) {
     return absl::FailedPreconditionError(
         absl::StrCat("Cloning is not acceptable with score gain: ", score_gain,

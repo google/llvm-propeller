@@ -58,7 +58,7 @@ void SortNodesByFrequency(std::vector<CFGNode*>& nodes) {
 // in `cfg_changes_by_function_index`.
 void CreateInterFunctionEdges(
     const ProgramCfg& program_cfg,
-    const absl::flat_hash_map<int, std::vector<CfgChangeFromPathCloning>>&
+    const absl::btree_map<int, std::vector<CfgChangeFromPathCloning>>&
         cfg_changes_by_function_index,
     absl::flat_hash_map<int, std::unique_ptr<ControlFlowGraph>>&
         clone_cfgs_by_index) {
@@ -244,11 +244,20 @@ CloneApplicatorStats ApplyClonings(
   LOG(INFO) << "Applying clonings...";
   absl::flat_hash_map<int, std::unique_ptr<ControlFlowGraph>>
       clone_cfgs_by_function_index;
-  absl::flat_hash_map<int, std::vector<CfgChangeFromPathCloning>>
+  absl::btree_map<int, std::vector<CfgChangeFromPathCloning>>
       cfg_changes_by_function_index;
 
+  // Move clonings to a btree_map to apply them in a consistent order. Also,
+  // sort the clonings within each function in descending order of their
+  // scores.
+  absl::btree_map<int, std::vector<EvaluatedPathCloning>>
+      clonings_by_function_index_sorted;
   for (auto& [function_index, clonings] : clonings_by_function_index) {
-    // Apply clonings in reverse order of their scores.
+    absl::c_sort(clonings, std::greater<EvaluatedPathCloning>());
+    clonings_by_function_index_sorted[function_index] = std::move(clonings);
+  }
+
+  for (auto& [function_index, clonings] : clonings_by_function_index_sorted) {
     absl::c_sort(clonings, std::greater<EvaluatedPathCloning>());
     const auto& function_path_profile =
         path_profiles_by_function_index.at(function_index);
