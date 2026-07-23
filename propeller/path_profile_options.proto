@@ -10,7 +10,7 @@ message PathProfileOptions {
 
   // Maximum path length to consider for path cloning. Must be greater than one.
   // This is the length of the cloned path including the path predecessor block.
-  int32 max_path_length = 2 [default = 5];
+  int32 max_path_length = 2 [default = 6];
 
   // Minimum out-flow to in-flow ratio to extend a path along a block.
   double min_flow_ratio = 3 [default = 0.8];
@@ -32,7 +32,7 @@ message PathProfileOptions {
   // nondecreasing order of their sample time.
   int32 max_time_diff_in_path_buffer_millis = 7 [default = 1000];
 
-  bool enable_cloning = 9 [default = true];
+  bool enable_cloning = 9 [default = false];
 
   // Base penalty factor for cloning.
   double base_penalty_factor = 11 [default = 1.0];
