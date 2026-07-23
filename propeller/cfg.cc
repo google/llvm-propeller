@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -276,21 +277,22 @@ void CfgBuilder::ApplyIntraCfgChanges(
     }
   }
   // Helper for finding the original intra-function edge from `src_bb_index`
-  // to `sink_bb_index`.
+  // to `sink_bb_index` or nullptr if not found.
   auto find_original_edge = [&](int src_bb_index,
-                                int sink_bb_index) -> CFGEdge& {
+                                int sink_bb_index) -> CFGEdge* absl_nullable {
     auto it = original_edges_by_src_bb_index.find(src_bb_index);
     if (it != original_edges_by_src_bb_index.end()) {
       for (CFGEdge* edge : it->second) {
         if (edge->sink()->bb_index() == sink_bb_index) {
-          return *edge;
+          return edge;
         }
       }
     }
-    LOG(FATAL) << "No edge from block with index " << src_bb_index
-               << " to block with index" << sink_bb_index << " in function "
-               << cfg_->GetPrimaryName().str()
-               << " [function index: " << cfg_->function_index() << "]";
+    LOG(WARNING) << "No edge from block with index " << src_bb_index
+                 << " to block with index" << sink_bb_index << " in function "
+                 << cfg_->GetPrimaryName().str()
+                 << " [function index: " << cfg_->function_index() << "]";
+    return nullptr;
   };
 
   // Path profiles are not continuous (due to the limited LBR stack depth).
@@ -322,9 +324,11 @@ void CfgBuilder::ApplyIntraCfgChanges(
                .to_bb_index = child_bb_index})) {
         continue;
       }
-      CFGEdge& edge = find_original_edge(path_node->node_bb_index(),
+      CFGEdge* edge = find_original_edge(path_node->node_bb_index(),
                                          child->node_bb_index());
-      edge.DecrementWeight(child->path_pred_info().missing_pred_entry.freq);
+      if (edge != nullptr) {
+        edge->DecrementWeight(child->path_pred_info().missing_pred_entry.freq);
+      }
     }
   }
 
@@ -345,10 +349,12 @@ void CfgBuilder::ApplyIntraCfgChanges(
       CFGNode& from_src_node = *nodes_[edge_reroute.src_bb_index];
       CFGNode& from_sink_node = *nodes_[edge_reroute.sink_bb_index];
       if (edge_reroute.kind != CFGEdgeKind::kBranchOrFallthough) continue;
-      CFGEdge& edge = find_original_edge(edge_reroute.src_bb_index,
-                                         edge_reroute.sink_bb_index);
       // Find and decrement the weight of the original edge.
-      edge.DecrementWeight(edge_reroute.weight);
+      CFGEdge* edge = find_original_edge(edge_reroute.src_bb_index,
+                                         edge_reroute.sink_bb_index);
+      if (edge != nullptr) {
+        edge->DecrementWeight(edge_reroute.weight);
+      }
       CFGNode* to_src_node = edge_reroute.src_is_cloned
                                  ? clones[edge_reroute.src_bb_index]
                                  : &from_src_node;
