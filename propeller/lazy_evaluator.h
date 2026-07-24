@@ -34,7 +34,7 @@ class LazyEvaluator;
 //   LazyEvaluator<std::string(std::vector<std::string>)> joiner(
 //     {"Hello", "world!"},
 //     [](std::vector<std::string> strings) -> std::string {
-//         return absl::StrJoin(strings, " ");
+//         return llvm::join(strings, " ");
 //     });
 //   std::string joined = joiner.Evaluate();
 //

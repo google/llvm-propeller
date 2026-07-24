@@ -26,8 +26,8 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "google/protobuf/repeated_ptr_field.h"
+#include "llvm/ADT/Twine.h"
 #include "propeller/binary_content.h"
 #include "propeller/branch_aggregator.h"
 #include "propeller/file_helpers.h"
@@ -119,7 +119,8 @@ absl::StatusOr<std::unique_ptr<BranchAggregator>> CreateBranchAggregator(
     }
     default: {
       return absl::InvalidArgumentError(
-          absl::StrCat("unsupported profile type ", profile_type));
+          (llvm::Twine("unsupported profile type ") + llvm::Twine(profile_type))
+              .str());
     }
   }
 }

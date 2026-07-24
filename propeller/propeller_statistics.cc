@@ -40,9 +40,10 @@ std::string PropellerStats::CodeLayoutStats::DebugString() const {
            absl::StrJoin(n_assemblies_by_merge_order, ", ",
                          [](std::string* out,
                             const std::pair<ChainMergeOrder, int>& entry) {
-                           absl::StrAppend(out, "[",
-                                           GetMergeOrderName(entry.first), ":",
-                                           entry.second, "]");
+                           absl::StrAppend(
+                               out, "[",
+                               std::string(GetMergeOrderName(entry.first)), ":",
+                               entry.second, "]");
                          })),
        absl::StrCat("Initial chains stats: single-node chains: [",
                     n_single_node_chains, "] multi-node chains: [",

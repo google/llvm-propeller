@@ -28,12 +28,12 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Twine.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Path.h"
 #include "propeller/binary_address_branch.h"
 #include "propeller/binary_content.h"
@@ -50,7 +50,7 @@
 namespace {
 
 // Convert binary data stored in data[...] into text representation.
-std::string BinaryDataToAscii(absl::string_view data) {
+std::string BinaryDataToAscii(llvm::StringRef data) {
   std::string ascii(data.size() * 2, 0);
   const char heximal[] = "0123456789abcdef";
   for (int i = 0; i < data.size(); ++i) {
@@ -105,7 +105,7 @@ struct MMapSelector {
 };
 
 absl::StatusOr<absl::flat_hash_set<std::string>> GetBuildIdNames(
-    const quipper::PerfReader& perf_reader, absl::string_view build_id) {
+    const quipper::PerfReader& perf_reader, llvm::StringRef build_id) {
   absl::flat_hash_set<std::string> build_id_names;
   std::vector<std::pair<std::string, std::string>> existing_build_ids;
   for (const auto& build_id_entry : perf_reader.build_ids()) {
@@ -131,14 +131,16 @@ absl::StatusOr<absl::flat_hash_set<std::string>> GetBuildIdNames(
   if (!build_id_names.empty()) return build_id_names;
 
   // No build matches.
-  return absl::FailedPreconditionError(absl::StrCat(
-      "No file with matching buildId in perf data, which contains the "
-      "following <file, build_id>:\n",
-      absl::StrJoin(
-          existing_build_ids, "\n",
-          [](std::string* out, const std::pair<std::string, std::string>& p) {
-            absl::StrAppend(out, "\t", p.first, ": ", p.second);
-          })));
+  std::vector<std::string> pairs;
+  pairs.reserve(existing_build_ids.size());
+  for (const auto& p : existing_build_ids)
+    pairs.push_back((llvm::Twine("\t") + p.first + ": " + p.second).str());
+  return absl::FailedPreconditionError(
+      (llvm::Twine(
+           "No file with matching buildId in perf data, which contains the "
+           "following <file, build_id>:\n") +
+       llvm::join(pairs, "\n"))
+          .str());
 }
 
 // Find the set of file names in perf.data file which has the same build id as
@@ -177,7 +179,7 @@ FindFileNameInPerfDataWithFileBuildId(const quipper::PerfReader& perf_reader,
 //    the perf.data mmap is selected using match_mmap_name
 absl::StatusOr<BinaryMMaps> SelectMMaps(
     PerfDataProvider::BufferHandle& perf_data,
-    absl::Span<const absl::string_view> match_mmap_names,
+    llvm::ArrayRef<llvm::StringRef> match_mmap_names,
     const BinaryContent& binary_content) {
   quipper::PerfReader perf_reader;
   // Ignore SAMPLE events for now to reduce memory usage. They will be needed
@@ -186,14 +188,16 @@ absl::StatusOr<BinaryMMaps> SelectMMaps(
   if (!perf_reader.ReadFromPointer(perf_data.buffer->getBufferStart(),
                                    perf_data.buffer->getBufferSize())) {
     return absl::FailedPreconditionError(
-        absl::StrCat("Failed to read perf data file: ", perf_data.description));
+        (llvm::Twine("Failed to read perf data file: ") + perf_data.description)
+            .str());
   }
 
   quipper::PerfParser perf_parser(&perf_reader);
   if (!perf_parser.ParseRawEvents()) {
     return absl::FailedPreconditionError(
-        absl::StrCat("Failed to parse perf raw events for perf file: '",
-                     perf_data.description, "'."));
+        (llvm::Twine("Failed to parse perf raw events for perf file: '") +
+         perf_data.description + "'.")
+            .str());
   }
 
   std::unique_ptr<MMapSelector> mmap_selector;
@@ -207,20 +211,25 @@ absl::StatusOr<BinaryMMaps> SelectMMaps(
       // has no build-id or no matching build-id found in perf.data.
       if (binary_content.build_id.empty()) {
         return absl::FailedPreconditionError(
-            absl::StrCat(binary_content.file_name,
-                         " has no build-id. Use '--profiled_binary_name' to "
-                         "force name matching."));
+            (llvm::Twine(binary_content.file_name) +
+             " has no build-id. Use '--profiled_binary_name' to "
+             "force name matching.")
+                .str());
       }
-      return absl::FailedPreconditionError(absl::StrCat(
-          binary_content.file_name, " has build-id '", binary_content.build_id,
-          "', however, this build-id is not found in the perf "
-          "build-id list. Use '--profiled_binary_name' to force name "
-          "matching."));
+      return absl::FailedPreconditionError(
+          (llvm::Twine(binary_content.file_name) + " has build-id '" +
+           binary_content.build_id +
+           "', however, this build-id is not found in the perf "
+           "build-id list. Use '--profiled_binary_name' to force name "
+           "matching.")
+              .str());
     }
   } else {
-    mmap_selector =
-        std::make_unique<MMapSelector>(absl::flat_hash_set<std::string>(
-            match_mmap_names.begin(), match_mmap_names.end()));
+    absl::flat_hash_set<std::string> match_mmap_name_set;
+    for (llvm::StringRef name : match_mmap_names) {
+      match_mmap_name_set.insert(name.str());
+    }
+    mmap_selector = std::make_unique<MMapSelector>(match_mmap_name_set);
   }
 
   BinaryMMaps binary_mmaps;
@@ -253,16 +262,16 @@ absl::StatusOr<BinaryMMaps> SelectMMaps(
         }
         if (!((load_addr + load_size <= e.load_addr) ||
               (e.load_addr + e.load_size <= load_addr))) {
-          return absl::FailedPreconditionError(absl::StrCat(
-              "Found conflict mmap event: ",
-              MMapEntry{pid, load_addr, load_size, page_offset,
-                        binary_content.file_name}
-                  .DebugString(),
-              ". Existing mmap entries:\n",
-              absl::StrJoin(existing_mmaps->second, "\n",
-                            [&](std::string* out, const MMapEntry& me) {
-                              absl::StrAppend(out, "\t", me.DebugString());
-                            })));
+          std::vector<std::string> entries;
+          for (const MMapEntry& me : existing_mmaps->second)
+            entries.push_back((llvm::Twine("\t") + me.DebugString()).str());
+          return absl::FailedPreconditionError(
+              (llvm::Twine("Found conflict mmap event: ") +
+               MMapEntry{pid, load_addr, load_size, page_offset,
+                         binary_content.file_name}
+                   .DebugString() +
+               ". Existing mmap entries:\n" + llvm::join(entries, "\n"))
+                  .str());
         }
       }
       if (!entry_exists)
@@ -276,17 +285,19 @@ absl::StatusOr<BinaryMMaps> SelectMMaps(
 
   if (binary_mmaps.empty()) {
     return absl::FailedPreconditionError(
-        absl::StrCat("Failed to find any mmap entries matching: '",
-                     absl::StrJoin(match_mmap_names, "' or '"), "'."));
+        (llvm::Twine("Failed to find any mmap entries matching: '") +
+         llvm::join(match_mmap_names, "' or '") + "'.")
+            .str());
   }
 
   for (const auto& [pid, mmap_entries] : binary_mmaps) {
-    LOG(INFO) << absl::StrCat(
-        "Found mmap: pid=", pid, "\n",
-        absl::StrJoin(mmap_entries, "\n",
-                      [](std::string* out, const MMapEntry& mme) {
-                        return absl::StrAppend(out, "\t", mme.DebugString());
-                      }));
+    std::vector<std::string> parts;
+    for (const MMapEntry& mme : mmap_entries) {
+      parts.push_back((llvm::Twine("\t") + mme.DebugString()).str());
+    }
+    LOG(INFO) << (llvm::Twine("Found mmap: pid=") + llvm::Twine(pid) + "\n" +
+                  llvm::join(parts, "\n"))
+                     .str();
   }
   return binary_mmaps;
 }
@@ -337,10 +348,12 @@ uint64_t PerfDataReader::RuntimeAddressToBinaryAddress(uint32_t pid,
         // We *believe* all kernel samples should come from the first executable
         // kernel segment. (The second executable segment contains
         // ".init.text" and ".exit.text", etc.)
-        LOG(WARNING) << absl::StrFormat(
-            "kernel runtime address 0x%lx does not come from the first "
-            "executable segment",
-            addr);
+        LOG(WARNING) << llvm::formatv(
+                            "kernel runtime address 0x{0:x} does not come from "
+                            "the first "
+                            "executable segment",
+                            addr)
+                            .str();
       }
     } else {
       off = segment.offset;
@@ -349,10 +362,12 @@ uint64_t PerfDataReader::RuntimeAddressToBinaryAddress(uint32_t pid,
       return file_offset - off + segment.vaddr;
     }
   }
-  LOG(WARNING) << absl::StrFormat(
-      "pid: %u, virtual address: %#x belongs to '%s', file_offset=%lu, not "
-      "inside any loadable segment.",
-      pid, addr, mmap->file_name, file_offset);
+  LOG(WARNING) << llvm::formatv(
+                      "pid: {0}, virtual address: {1:#x} belongs to '{2}', "
+                      "file_offset={3}, "
+                      "not inside any loadable segment.",
+                      pid, addr, mmap->file_name, file_offset)
+                      .str();
   return kInvalidBinaryAddress;
 }
 
@@ -469,9 +484,11 @@ bool PerfDataReader::IsKernelMode() const {
 
 absl::StatusOr<PerfDataReader> BuildPerfDataReader(
     PerfDataProvider::BufferHandle perf_data,
-    const BinaryContent* binary_content, absl::string_view match_mmap_name) {
-  auto match_mmap_names = absl::MakeConstSpan(
-      &match_mmap_name, /*size=*/match_mmap_name.empty() ? 0 : 1);
+    const BinaryContent* binary_content, llvm::StringRef match_mmap_name) {
+  llvm::SmallVector<llvm::StringRef, 1> match_mmap_names;
+  if (!match_mmap_name.empty()) {
+    match_mmap_names.push_back(match_mmap_name);
+  }
 
   ASSIGN_OR_RETURN(BinaryMMaps binary_mmaps,
                    SelectMMaps(perf_data, match_mmap_names, *binary_content));

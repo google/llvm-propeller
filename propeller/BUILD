@@ -204,11 +204,10 @@ cc_library(
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
-        "@abseil-cpp//absl/strings",
-        "@abseil-cpp//absl/strings:str_format",
         "@llvm-project//llvm:BinaryFormat",
         "@llvm-project//llvm:DebugInfoDWARF",
         "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -228,6 +227,7 @@ cc_library(
     deps = [
         "@abseil-cpp//absl/functional:any_invocable",
         "@abseil-cpp//absl/functional:overload",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -306,6 +306,7 @@ cc_library(
     deps = [
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -372,8 +373,7 @@ cc_library(
         ":cfg_edge_kind",
         "@abseil-cpp//absl/log",
         "@abseil-cpp//absl/log:check",
-        "@abseil-cpp//absl/strings",
-        "@abseil-cpp//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -387,8 +387,8 @@ cc_library(
         ":cfg_id",
         "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/functional:function_ref",
-        "@abseil-cpp//absl/strings",
         "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -449,7 +449,7 @@ cc_library(
     hdrs = ["chain_merge_order.h"],
     deps = [
         "@abseil-cpp//absl/log",
-        "@abseil-cpp//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -986,8 +986,7 @@ cc_library(
     deps = [
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
-        "@abseil-cpp//absl/strings",
-        "@abseil-cpp//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1018,8 +1017,8 @@ cc_library(
         "@abseil-cpp//absl/log",
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/status",
-        "@abseil-cpp//absl/strings",
         "@com_google_protobuf//:protobuf_lite",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1028,8 +1027,8 @@ cc_library(
     hdrs = ["text_proto_flag.h"],
     deps = [
         "@abseil-cpp//absl/log:check",
-        "@abseil-cpp//absl/strings:string_view",
         "@com_google_protobuf//:protobuf",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1048,8 +1047,7 @@ cc_binary(
         "@abseil-cpp//absl/flags:parse",
         "@abseil-cpp//absl/flags:usage",
         "@abseil-cpp//absl/log:check",
-        "@abseil-cpp//absl/strings",
-        "@abseil-cpp//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1062,8 +1060,8 @@ cc_library(
     hdrs = ["parse_text_proto.h"],
     deps = [
         "@abseil-cpp//absl/log:absl_check",
-        "@abseil-cpp//absl/strings:string_view",
         "@com_google_protobuf//:protobuf",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1072,12 +1070,9 @@ cc_library(
     srcs = ["file_helpers.cc"],
     hdrs = ["file_helpers.h"],
     deps = [
-        "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
-        "@abseil-cpp//absl/strings",
-        "@abseil-cpp//absl/strings:string_view",
-        "@abseil-cpp//absl/types:span",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1088,8 +1083,8 @@ cc_test(
         ":file_helpers",
         ":status_testing_macros",
         "@abseil-cpp//absl/status:status_matchers",
-        "@abseil-cpp//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1335,6 +1330,7 @@ cc_test(
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1366,6 +1362,17 @@ cc_test(
         ":status_testing_macros",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "cfg_node_test",
+    srcs = ["cfg_node_test.cc"],
+    deps = [
+        ":cfg_node",
+        ":status_testing_macros",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Object",
     ],
 )
 

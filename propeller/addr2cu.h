@@ -19,7 +19,7 @@
 #include <memory>
 
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
 #include "llvm/DebugInfo/DWARF/DWARFFormValue.h"
 #include "llvm/Object/ObjectFile.h"
@@ -29,7 +29,7 @@ namespace propeller {
 // Creates an `llvm::DWARFContext` instance, which can then be used to create
 // an `Addr2Cu` instance.
 absl::StatusOr<std::unique_ptr<llvm::DWARFContext>> CreateDWARFContext(
-    const llvm::object::ObjectFile& obj, absl::string_view dwp_file = "");
+    const llvm::object::ObjectFile& obj, llvm::StringRef dwp_file = "");
 
 // Utility class that gets the module name for a code address with
 // the help of debug information.
@@ -46,7 +46,7 @@ class Addr2Cu {
 
   // Returns the file name for the compile unit that contains the given code
   // address. Note: the returned string_view lives as long as `dwarf_context_`.
-  absl::StatusOr<absl::string_view> GetCompileUnitFileNameForCodeAddress(
+  absl::StatusOr<llvm::StringRef> GetCompileUnitFileNameForCodeAddress(
       uint64_t code_address) const;
 
  private:

@@ -16,8 +16,8 @@
 #define THIRD_PARTY_PROPELLER_PARSE_TEXT_PROTO_H_
 
 #include "absl/log/absl_check.h"
-#include "absl/strings/string_view.h"
 #include "google/protobuf/text_format.h"
+#include "llvm/ADT/StringRef.h"
 
 // This file contains private helpers for dealing with textprotos in our
 // tests.
@@ -25,7 +25,7 @@ namespace propeller_testing {
 
 class ParseTextProtoOrDie {
  public:
-  explicit ParseTextProtoOrDie(absl::string_view text) : text_(text) {}
+  explicit ParseTextProtoOrDie(llvm::StringRef text) : text_(text) {}
   template <typename Proto>
   operator Proto() {  // NOLINT(google-explicit-constructor)
     Proto ret;
@@ -34,7 +34,7 @@ class ParseTextProtoOrDie {
   }
 
  private:
-  absl::string_view text_;
+  llvm::StringRef text_;
 };
 
 }  // namespace propeller_testing
