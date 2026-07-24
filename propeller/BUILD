@@ -18,6 +18,8 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_license//rules:license.bzl", "license")
+load("//third_party/bazel_skylib/lib:selects.bzl", "selects")
+load("//third_party/bazel_skylib/rules:common_settings.bzl", "bool_flag")
 
 package(
     default_applicable_licenses = [":license"],
@@ -41,288 +43,56 @@ license(name = "license")
 
 exports_files(["LICENSE"])
 
-###############
-#  Libraries  #
-###############
-cc_library(
-    name = "binary_address_branch",
-    hdrs = ["binary_address_branch.h"],
-    deps = ["@abseil-cpp//absl/strings:str_format"],
+bool_flag(
+    name = "enable_mlgo",
+    build_setting_default = True,
+)
+
+config_setting(
+    name = "enable_mlgo_choice",
+    flag_values = {":enable_mlgo": "True"},
+)
+
+selects.config_setting_group(
+    name = "mlgo_is_enabled",
+    match_all = [
+        ":enable_mlgo_choice",
+        "//tools/cc_target_os:linux-google",
+    ],
+)
+
+# Flag controlling whether or not MLGO training support should be built into
+# LLVM.
+#
+# To enable pass --//third_party/llvm/mlgo:enable_mlgo_training=True.
+# The training dependencies also need to be set separately by passing
+# --//third_party/llvm/llvm-project/llvm:tf_train_deps=//third_party/llvm/mlgo:mlgo_training_deps
+
+bool_flag(
+    name = "enable_mlgo_training",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "mlgo_training_is_enabled",
+    flag_values = {":enable_mlgo_training": "True"},
 )
 
 cc_library(
-    name = "branch_aggregation",
-    srcs = ["branch_aggregation.cc"],
-    hdrs = ["branch_aggregation.h"],
+    name = "mlgo_training_deps",
     deps = [
-        ":binary_address_branch",
-        "@abseil-cpp//absl/algorithm:container",
-        "@abseil-cpp//absl/container:flat_hash_map",
-        "@abseil-cpp//absl/container:flat_hash_set",
+        "//google/protobuf:struct_cc_proto",
+        "//third_party/tensorflow/core/example:example_protos_cc",
+        "//third_party/tensorflow/lite:framework",
+        "//third_party/tensorflow/lite/kernels:builtin_ops",
     ],
 )
 
-cc_library(
-    name = "branch_aggregator",
-    hdrs = ["branch_aggregator.h"],
-    deps = [
-        ":binary_address_mapper",
-        ":branch_aggregation",
-        ":propeller_options_cc_proto",
-        ":propeller_statistics",
-        "@abseil-cpp//absl/container:flat_hash_set",
-        "@abseil-cpp//absl/status:statusor",
-    ],
-)
+cc_library(name = "no_training_deps")
 
-cc_library(
-    name = "branch_frequencies",
-    srcs = ["branch_frequencies.cc"],
-    hdrs = ["branch_frequencies.h"],
-    deps = [
-        ":binary_address_branch",
-        ":branch_frequencies_cc_proto",
-        "@abseil-cpp//absl/algorithm:container",
-        "@abseil-cpp//absl/container:flat_hash_map",
-    ],
-)
-
-proto_library(
-    name = "branch_frequencies_proto",
-    srcs = ["branch_frequencies.proto"],
-)
-
-cc_proto_library(
-    name = "branch_frequencies_cc_proto",
-    deps = [":branch_frequencies_proto"],
-)
-
-cc_library(
-    name = "branch_frequencies_aggregator",
-    hdrs = ["branch_frequencies_aggregator.h"],
-    deps = [
-        ":binary_content",
-        ":branch_frequencies",
-        ":propeller_options_cc_proto",
-        ":propeller_statistics",
-        "@abseil-cpp//absl/status:statusor",
-    ],
-)
-
-cc_library(
-    name = "proto_branch_frequencies_aggregator",
-    srcs = ["proto_branch_frequencies_aggregator.cc"],
-    hdrs = ["proto_branch_frequencies_aggregator.h"],
-    deps = [
-        ":binary_content",
-        ":branch_frequencies",
-        ":branch_frequencies_aggregator",
-        ":branch_frequencies_cc_proto",
-        ":propeller_options_cc_proto",
-        ":propeller_statistics",
-        "@abseil-cpp//absl/status:statusor",
-    ],
-)
-
-cc_library(
-    name = "frequencies_branch_aggregator",
-    srcs = ["frequencies_branch_aggregator.cc"],
-    hdrs = ["frequencies_branch_aggregator.h"],
-    deps = [
-        ":bb_handle",
-        ":binary_address_branch",
-        ":binary_address_mapper",
-        ":binary_content",
-        ":branch_aggregation",
-        ":branch_aggregator",
-        ":branch_frequencies",
-        ":branch_frequencies_aggregator",
-        ":lazy_evaluator",
-        ":propeller_statistics",
-        ":status_macros",
-        "@abseil-cpp//absl/base:core_headers",
-        "@abseil-cpp//absl/container:btree",
-        "@abseil-cpp//absl/container:flat_hash_map",
-        "@abseil-cpp//absl/container:flat_hash_set",
-        "@abseil-cpp//absl/status:statusor",
-        "@llvm-project//llvm:TargetParser",
-    ],
-)
-
-cc_library(
-    name = "lbr_aggregation",
-    hdrs = ["lbr_aggregation.h"],
-    deps = [
-        ":binary_address_branch",
-        "@abseil-cpp//absl/algorithm:container",
-        "@abseil-cpp//absl/container:flat_hash_map",
-    ],
-)
-
-cc_library(
-    name = "lbr_aggregator",
-    hdrs = [
-        "lbr_aggregator.h",
-    ],
-    deps = [
-        ":binary_content",
-        ":lbr_aggregation",
-        ":propeller_options_cc_proto",
-        ":propeller_statistics",
-        "@abseil-cpp//absl/status:statusor",
-    ],
-)
-
-cc_library(
-    name = "lbr_branch_aggregator",
-    srcs = ["lbr_branch_aggregator.cc"],
-    hdrs = ["lbr_branch_aggregator.h"],
-    deps = [
-        ":binary_address_mapper",
-        ":binary_content",
-        ":branch_aggregation",
-        ":branch_aggregator",
-        ":lazy_evaluator",
-        ":lbr_aggregation",
-        ":lbr_aggregator",
-        ":propeller_options_cc_proto",
-        ":propeller_statistics",
-        ":status_macros",
-        "@abseil-cpp//absl/base:core_headers",
-        "@abseil-cpp//absl/container:flat_hash_set",
-        "@abseil-cpp//absl/status:statusor",
-    ],
-)
-
-cc_library(
-    name = "addr2cu",
-    srcs = ["addr2cu.cc"],
-    hdrs = ["addr2cu.h"],
-    deps = [
-        "@abseil-cpp//absl/algorithm:container",
-        "@abseil-cpp//absl/log",
-        "@abseil-cpp//absl/log:check",
-        "@abseil-cpp//absl/status",
-        "@abseil-cpp//absl/status:statusor",
-        "@abseil-cpp//absl/strings",
-        "@abseil-cpp//absl/strings:str_format",
-        "@llvm-project//llvm:BinaryFormat",
-        "@llvm-project//llvm:DebugInfoDWARF",
-        "@llvm-project//llvm:Object",
-    ],
-)
-
-cc_library(
-    name = "status_macros",
-    hdrs = ["status_macros.h"],
-    deps = [
-        "@abseil-cpp//absl/log",
-        "@abseil-cpp//absl/status",
-        "@abseil-cpp//absl/status:statusor",
-    ],
-)
-
-cc_library(
-    name = "lazy_evaluator",
-    hdrs = ["lazy_evaluator.h"],
-    deps = [
-        "@abseil-cpp//absl/functional:any_invocable",
-        "@abseil-cpp//absl/functional:overload",
-    ],
-)
-
-cc_library(
-    name = "bb_handle",
-    hdrs = ["bb_handle.h"],
-    deps = ["@abseil-cpp//absl/strings:str_format"],
-)
-
-cc_library(
-    name = "spe_pid_provider",
-    hdrs = ["spe_pid_provider.h"],
-    deps = [
-        "@abseil-cpp//absl/status:statusor",
-        "@com_google_perf_data_converter//src/quipper:arm_spe_decoder",
-    ],
-)
-
-cc_library(
-    name = "spe_tid_pid_provider",
-    srcs = ["spe_tid_pid_provider.cc"],
-    hdrs = ["spe_tid_pid_provider.h"],
-    deps = [
-        ":spe_pid_provider",
-        "@abseil-cpp//absl/base",
-        "@abseil-cpp//absl/container:btree",
-        "@abseil-cpp//absl/container:flat_hash_map",
-        "@abseil-cpp//absl/log",
-        "@abseil-cpp//absl/status",
-        "@abseil-cpp//absl/status:statusor",
-        "@abseil-cpp//absl/strings",
-        "@com_google_perf_data_converter//src/quipper:arm_spe_decoder",
-        "@com_google_perf_data_converter//src/quipper:perf_data_cc_proto",
-        "@com_google_perf_data_converter//src/quipper:perf_data_utils",
-        "@com_google_protobuf//:protobuf_lite",
-    ],
-)
-
-cc_library(
-    name = "binary_content",
-    srcs = ["binary_content.cc"],
-    hdrs = ["binary_content.h"],
-    deps = [
-        ":addr2cu",
-        ":status_macros",
-        "@abseil-cpp//absl/container:btree",
-        "@abseil-cpp//absl/container:flat_hash_map",
-        "@abseil-cpp//absl/log",
-        "@abseil-cpp//absl/log:check",
-        "@abseil-cpp//absl/status",
-        "@abseil-cpp//absl/status:statusor",
-        "@abseil-cpp//absl/strings",
-        "@abseil-cpp//absl/strings:str_format",
-        "@llvm-project//llvm:BinaryFormat",
-        "@llvm-project//llvm:DebugInfoDWARF",
-        "@llvm-project//llvm:Object",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:TargetParser",
-    ],
-)
-
-cc_library(
-    name = "cfg_edge_kind",
-    srcs = ["cfg_edge_kind.cc"],
-    hdrs = [
-        "cfg_edge_kind.h",
-    ],
-    deps = ["@abseil-cpp//absl/log"],
-)
-
-cc_library(
-    name = "cfg_id",
-    hdrs = [
-        "cfg_id.h",
-    ],
-    deps = [
-        "@abseil-cpp//absl/strings",
-        "@abseil-cpp//absl/strings:str_format",
-    ],
-)
-
-cc_library(
-    name = "perf_data_provider",
-    hdrs = ["perf_data_provider.h"],
-    deps = [
-        ":status_macros",
-        "@abseil-cpp//absl/status:statusor",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-proto_library(
-    name = "propeller_options_proto",
-    srcs = ["propeller_options.proto"],
-    deps = [":path_profile_options_proto"],
+label_flag(
+    name = "tf_train_deps",
+    build_setting_default = ":no_training_deps",
 )
 
 cc_proto_library(
@@ -554,6 +324,7 @@ cc_library(
         "chain_cluster_builder.cc",
         "code_layout.cc",
         "code_layout_scorer.cc",
+        "ml_code_layout.cc",
         "node_chain.cc",
         "node_chain_assembly.cc",
         "node_chain_builder.cc",
@@ -562,10 +333,12 @@ cc_library(
         "chain_cluster_builder.h",
         "code_layout.h",
         "code_layout_scorer.h",
+        "ml_code_layout.h",
         "node_chain.h",
         "node_chain_assembly.h",
         "node_chain_builder.h",
     ],
+    copts = maybe_tf_train_define,
     deps = [
         ":cfg",
         ":cfg_edge",
@@ -587,8 +360,10 @@ cc_library(
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings:str_format",
         "@abseil-cpp//absl/types:span",
+        "@llvm-project//llvm:Analysis",
+        "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
-    ],
+    ] + maybe_tf_train_deps,
 )
 
 cc_library(
@@ -1039,6 +814,7 @@ cc_library(
 cc_binary(
     name = "generate_propeller_profiles",
     srcs = ["generate_propeller_profiles.cc"],
+    copts = maybe_tf_train_define,
     deps = [
         ":profile_generator",
         ":propeller_options_cc_proto",
@@ -1050,7 +826,7 @@ cc_binary(
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/strings:string_view",
-    ],
+    ] + maybe_tf_train_deps,
 )
 
 ########################
@@ -1519,9 +1295,12 @@ cc_test(
         ":cfg_node",
         ":chain_merge_order",
         ":code_layout",
+        ":file_helpers",
         ":function_layout_info",
         ":function_layout_info_matchers",
         ":mock_program_cfg_builder",
+        ":profile",
+        ":profile_writer",
         ":program_cfg",
         ":propeller_options_cc_proto",
         ":propeller_statistics",

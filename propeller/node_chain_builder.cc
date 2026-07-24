@@ -34,6 +34,7 @@
 #include "propeller/chain_merge_order.h"
 #include "propeller/code_layout_scorer.h"
 #include "propeller/function_layout_info.h"
+#include "propeller/ml_code_layout.h"
 #include "propeller/node_chain.h"
 #include "propeller/node_chain_assembly.h"
 #include "propeller/propeller_statistics.h"
@@ -344,7 +345,40 @@ std::vector<std::unique_ptr<NodeChain>> NodeChainBuilder::BuildChains() {
   InitChainEdges();
   InitChainAssemblies();
   // Keep merging chains together until no more score gain can be achieved.
+  // int global_iteration = 0;
   while (!node_chain_assemblies_->empty()) {
+    // global_iteration++;
+    // auto best_assembly = node_chain_assemblies_->GetBestAssembly();
+    // const char* order_str = "Unknown";
+    // switch (best_assembly.merge_order()) {
+    //   case ChainMergeOrder::kSU:
+    //     order_str = "kSU";
+    //     break;
+    //   case ChainMergeOrder::kS2S1U:
+    //     order_str = "kS2S1U";
+    //     break;
+    //   case ChainMergeOrder::kS1US2:
+    //     order_str = "kS1US2";
+    //     break;
+    //   case ChainMergeOrder::kUS2S1:
+    //     order_str = "kUS2S1";
+    //     break;
+    //   case ChainMergeOrder::kS2US1:
+    //     order_str = "kS2US1";
+    //     break;
+    // }
+
+    // LOG(INFO) << "[Global Step " << global_iteration
+    //           << "] Selected merge with score gain: "
+    //           << best_assembly.score_gain()
+    //           << " | SplitChain: " << best_assembly.split_chain().id()
+    //           << " | UnsplitChain: " << best_assembly.unsplit_chain().id()
+    //           << " | Order: " << order_str
+    //           << " | Split(Sz=" << best_assembly.split_chain().size()
+    //           << ", Fr=" << best_assembly.split_chain().freq() << ")"
+    //           << " | Unsplit(Sz=" << best_assembly.unsplit_chain().size()
+    //           << ", Fr=" << best_assembly.unsplit_chain().freq() << ")";
+
     MergeChains(node_chain_assemblies_->GetBestAssembly());
   }
 
@@ -360,84 +394,179 @@ std::vector<std::unique_ptr<NodeChain>> NodeChainBuilder::BuildChains() {
 
 void NodeChainBuilder::UpdateNodeChainAssembly(NodeChain& split_chain,
                                                NodeChain& unsplit_chain) {
-  absl::StatusOr<NodeChainAssembly> best_assembly =
-      NodeChainAssembly::BuildNodeChainAssembly(
+  std::vector<NodeChainAssembly> candidates;
+  bool use_ml = code_layout_scorer_.code_layout_params().use_ml();
+  bool log_decisions = code_layout_scorer_.code_layout_params().log_decisions();
+
+  auto add_candidate = [&](absl::StatusOr<NodeChainAssembly> assembly) {
+    if (assembly.ok()) candidates.push_back(std::move(*assembly));
+  };
+
+  // 1. Candidate Generation
+  if (log_decisions) {
+    // Logging Path: Force all 5 merge orders to get a complete slate for
+    // training.
+    for (ChainMergeOrder order :
+         {ChainMergeOrder::kSU, ChainMergeOrder::kS1US2,
+          ChainMergeOrder::kS2S1U, ChainMergeOrder::kUS2S1,
+          ChainMergeOrder::kS2US1}) {
+      int pos = (order == ChainMergeOrder::kSU) ? -1 : 1;
+      if (pos == 1 && split_chain.node_bundles().size() <= 1) continue;
+
+      add_candidate(NodeChainAssembly::BuildNodeChainAssembly(
           *node_to_bundle_mapper_, code_layout_scorer_, split_chain,
-          unsplit_chain, {.merge_order = ChainMergeOrder::kSU});
+          unsplit_chain,
+          {.merge_order = order,
+           .slice_pos = (pos == 1 ? std::make_optional(1) : std::nullopt),
+           .is_mlgo_log_enabled = true}));  // Force for logging
+    }
+  } else {
+    // Standard Path: Heuristic-based candidate generation (pruned for speed)
+    add_candidate(NodeChainAssembly::BuildNodeChainAssembly(
+        *node_to_bundle_mapper_, code_layout_scorer_, split_chain,
+        unsplit_chain, {.merge_order = ChainMergeOrder::kSU}));
 
-  if (code_layout_scorer_.code_layout_params().chain_split()) {
-    auto compare_and_update_best_assembly =
-        [&](absl::StatusOr<NodeChainAssembly> assembly) {
-          if (!assembly.ok()) return;
-          if (!best_assembly.ok() ||
-              NodeChainAssemblyComparator()(*best_assembly, *assembly)) {
-            best_assembly = std::move(assembly);
+    if (code_layout_scorer_.code_layout_params().chain_split()) {
+      // Consider splitting split_chain at every position if the number of
+      // bundles does not exceed the splitting threshold.
+      if (split_chain.node_bundles().size() <=
+          code_layout_scorer_.code_layout_params().chain_split_threshold()) {
+        for (ChainMergeOrder merge_order :
+             {ChainMergeOrder::kS1US2, ChainMergeOrder::kS2S1U,
+              ChainMergeOrder::kUS2S1, ChainMergeOrder::kS2US1}) {
+          for (int slice_pos = 1;
+               slice_pos != split_chain.node_bundles().size(); ++slice_pos) {
+            add_candidate(NodeChainAssembly::BuildNodeChainAssembly(
+                *node_to_bundle_mapper_, code_layout_scorer_, split_chain,
+                unsplit_chain,
+                {.merge_order = merge_order, .slice_pos = slice_pos}));
           }
-        };
-
-    // Consider splitting split_chain at every position if the number of bundles
-    // does not exceed the splitting threshold.
-    if (split_chain.node_bundles().size() <=
-        code_layout_scorer_.code_layout_params().chain_split_threshold()) {
-      for (ChainMergeOrder merge_order :
-           {ChainMergeOrder::kS1US2, ChainMergeOrder::kS2S1U,
-            ChainMergeOrder::kUS2S1, ChainMergeOrder::kS2US1}) {
-        for (int slice_pos = 1; slice_pos != split_chain.node_bundles().size();
-             ++slice_pos) {
-          // Create the NodeChainAssembly representing this particular assembly.
-          compare_and_update_best_assembly(
-              NodeChainAssembly::BuildNodeChainAssembly(
-                  *node_to_bundle_mapper_, code_layout_scorer_, split_chain,
-                  unsplit_chain,
-                  {.merge_order = merge_order, .slice_pos = slice_pos}));
         }
+      } else {
+        // If split_chain is larger than the threshold, try finding splitting
+        // positions based on edges which can be converted to fallthroughs in
+        // the new chain.
+        auto try_assemblies =
+            [&](int slice_pos, absl::Span<const ChainMergeOrder> merge_orders) {
+              if (slice_pos == 0 ||
+                  slice_pos == split_chain.node_bundles().size())
+                return;
+              for (auto merge_order : merge_orders) {
+                add_candidate(NodeChainAssembly::BuildNodeChainAssembly(
+                    *node_to_bundle_mapper_, code_layout_scorer_, split_chain,
+                    unsplit_chain,
+                    {.merge_order = merge_order, .slice_pos = slice_pos}));
+              }
+            };
+
+        // Find edges from the end of unsplit_chain to the middle of
+        // split_chain.
+        unsplit_chain.GetLastNode()->ForEachOutEdgeRef([&](const CFGEdge&
+                                                               edge) {
+          if (!ShouldVisitEdge(edge)) return;
+          const CFGNodeBundle* sink_node_bundle =
+              node_to_bundle_mapper_->GetBundleMappingEntry(edge.sink()).bundle;
+          if (sink_node_bundle->chain_mapping().chain->id() != split_chain.id())
+            return;
+          if (sink_node_bundle->nodes().front() != edge.sink()) return;
+          try_assemblies(sink_node_bundle->chain_mapping().chain_index,
+                         {ChainMergeOrder::kS1US2, ChainMergeOrder::kUS2S1});
+        });
+
+        // Find edges from the middle of split_chain to the beginning of
+        // unsplit_chain.
+        unsplit_chain.GetFirstNode()->ForEachInEdgeRef([&](const CFGEdge&
+                                                               edge) {
+          if (!ShouldVisitEdge(edge)) return;
+          const CFGNodeBundle* src_node_bundle =
+              node_to_bundle_mapper_->GetBundleMappingEntry(edge.src()).bundle;
+          if (src_node_bundle->chain_mapping().chain->id() != split_chain.id())
+            return;
+          if (src_node_bundle->nodes().back() != edge.src()) return;
+          try_assemblies(src_node_bundle->chain_mapping().chain_index + 1,
+                         {ChainMergeOrder::kS1US2, ChainMergeOrder::kS2S1U});
+        });
       }
-    } else {
-      // If split_chain is larger than the threshold, try finding splitting
-      // positions based on edges which can be converted to fallthroughs in the
-      // new chain.
-      auto try_assemblies =
-          [&](int slice_pos, absl::Span<const ChainMergeOrder> merge_orders) {
-            if (slice_pos == 0 ||
-                slice_pos == split_chain.node_bundles().size())
-              return;
-            for (auto merge_order : merge_orders) {
-              compare_and_update_best_assembly(
-                  NodeChainAssembly::BuildNodeChainAssembly(
-                      *node_to_bundle_mapper_, code_layout_scorer_, split_chain,
-                      unsplit_chain,
-                      {.merge_order = merge_order, .slice_pos = slice_pos}));
-            }
-          };
-
-      // Find edges from the end of unsplit_chain to the middle of split_chain.
-      unsplit_chain.GetLastNode()->ForEachOutEdgeRef([&](const CFGEdge& edge) {
-        if (!ShouldVisitEdge(edge)) return;
-        const CFGNodeBundle* sink_node_bundle =
-            node_to_bundle_mapper_->GetBundleMappingEntry(edge.sink()).bundle;
-        if (sink_node_bundle->chain_mapping().chain->id() != split_chain.id())
-          return;
-        if (sink_node_bundle->nodes().front() != edge.sink()) return;
-        try_assemblies(sink_node_bundle->chain_mapping().chain_index,
-                       {ChainMergeOrder::kS1US2, ChainMergeOrder::kUS2S1});
-      });
-
-      // Find edges from the middle of split_chain to the beginning of
-      // unsplit_chain.
-      unsplit_chain.GetFirstNode()->ForEachInEdgeRef([&](const CFGEdge& edge) {
-        if (!ShouldVisitEdge(edge)) return;
-        const CFGNodeBundle* src_node_bundle =
-            node_to_bundle_mapper_->GetBundleMappingEntry(edge.src()).bundle;
-        if (src_node_bundle->chain_mapping().chain->id() != split_chain.id())
-          return;
-        if (src_node_bundle->nodes().back() != edge.src()) return;
-        try_assemblies(src_node_bundle->chain_mapping().chain_index + 1,
-                       {ChainMergeOrder::kS1US2, ChainMergeOrder::kS2S1U});
-      });
     }
   }
-  if (best_assembly.ok()) {
-    node_chain_assemblies_->InsertAssembly(std::move(*best_assembly));
+
+  if (candidates.empty()) {
+    node_chain_assemblies_->RemoveAssembly(
+        {.split_chain = &split_chain, .unsplit_chain = &unsplit_chain});
+    return;
+  }
+
+  // 2. Scoring and Logging
+  static int64_t global_decision_id = 0;
+  if (log_decisions || use_ml) {
+    global_decision_id++;
+  }
+
+  // Identify what the heuristic *would* have chosen (the "teacher" labels)
+  const NodeChainAssembly* heuristic_winner = nullptr;
+  if (log_decisions) {
+    for (const auto& cand : candidates) {
+      if (cand.is_legal() && cand.score_gain() > 0) {
+        if (!heuristic_winner ||
+            NodeChainAssemblyComparator()(*heuristic_winner, cand)) {
+          heuristic_winner = &cand;
+        }
+      }
+    }
+  }
+
+  for (auto& cand : candidates) {
+    bool is_chosen_by_heuristic =
+        (heuristic_winner != nullptr && &cand == heuristic_winner);
+
+    // Log the candidate slate if requested
+    if (log_decisions) {
+      LogAssemblyEvaluation(code_layout_scorer_.code_layout_params(),
+                            split_chain, unsplit_chain, cand,
+                            is_chosen_by_heuristic, global_decision_id);
+    }
+
+    // Override score with ML inference if requested
+    if (use_ml) {
+      double ml_score = GetAssemblyScoreML(
+          code_layout_scorer_.code_layout_params(), split_chain, unsplit_chain,
+          cand, is_chosen_by_heuristic, global_decision_id);
+      cand.set_score_gain(ml_score);
+    }
+  }
+
+  // 3. Winner Selection for Compilation
+  NodeChainAssembly* best_cand = &candidates.front();
+  for (auto& cand : candidates) {
+    if (NodeChainAssemblyComparator()(*best_cand, cand)) {
+      best_cand = &cand;
+    }
+  }
+
+  // Ensure we don't apply illegal/negative merges (especially if forced for
+  // logging)
+  bool is_winner_valid = false;
+  if (use_ml) {
+    if (best_cand->is_legal() && best_cand->score_gain() >= 0) {
+      is_winner_valid = true;
+    }
+  } else {
+    if (log_decisions) {
+      // If we were just logging but compiling with heuristic, use the
+      // heuristic winner
+      best_cand = const_cast<NodeChainAssembly*>(heuristic_winner);
+      if (best_cand && best_cand->score_gain() >= 0) {
+        is_winner_valid = true;
+      }
+    } else {
+      if (best_cand->score_gain() >= 0) {
+        is_winner_valid = true;
+      }
+    }
+  }
+
+  if (is_winner_valid && best_cand) {
+    node_chain_assemblies_->InsertAssembly(std::move(*best_cand));
   } else {
     node_chain_assemblies_->RemoveAssembly(
         {.split_chain = &split_chain, .unsplit_chain = &unsplit_chain});

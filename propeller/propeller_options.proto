@@ -94,7 +94,7 @@ message PropellerOptions {
   bool write_bb_hash = 18 [default = false];
 }
 
-// Next Available: 15.
+// Next Available: 21.
 message PropellerCodeLayoutParameters {
   uint32 fallthrough_weight = 1 [default = 10];
 
@@ -135,4 +135,19 @@ message PropellerCodeLayoutParameters {
   // The extra weight to assign to direct branches that are always taken and are
   // not fallthroughs.
   int32 always_taken_nonfallthrough_branch_weight = 14 [default = 0];
+
+  bool use_ml = 15 [default = false];
+
+  // Path to the policy model file.
+  string policy_path = 16;
+
+  bool split_all_basic_blocks = 17 [default = true];
+
+  // Path to the training log file.
+  string training_log_path = 18;
+
+  // path to citc workspace
+  string workspace_path = 19;
+
+  bool log_decisions = 20 [default = false];
 }
