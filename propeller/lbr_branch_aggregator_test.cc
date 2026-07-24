@@ -22,6 +22,7 @@
 #include "absl/status/statusor.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/DenseMap.h"
 #include "propeller/binary_address_mapper.h"
 #include "propeller/binary_content.h"
 #include "propeller/branch_aggregation.h"
@@ -87,7 +88,7 @@ TEST(LbrBranchAggregator, AggregatePropagatesErrors) {
   PropellerStats stats;
   BinaryAddressMapper binary_address_mapper(
       /*selected_functions=*/{}, /*bb_addr_map=*/{}, /*bb_handles=*/{},
-      /*symbol_info_map=*/{});
+      /*symbol_info_map=*/llvm::DenseMap<int, FunctionSymbolInfo>());
   auto mock_aggregator = std::make_unique<MockLbrAggregator>();
   EXPECT_CALL(*mock_aggregator, AggregateLbrData)
       .WillOnce(Return(absl::InternalError("")));
@@ -104,7 +105,7 @@ TEST(LbrBranchAggregator, ConvertsLbrAggregations) {
   PropellerStats stats;
   BinaryAddressMapper binary_address_mapper(
       /*selected_functions=*/{}, /*bb_addr_map=*/{}, /*bb_handles=*/{},
-      /*symbol_info_map=*/{});
+      /*symbol_info_map=*/llvm::DenseMap<int, FunctionSymbolInfo>());
 
   auto mock_aggregator = std::make_unique<MockLbrAggregator>();
   EXPECT_CALL(*mock_aggregator, AggregateLbrData)
@@ -130,20 +131,23 @@ TEST(LbrBranchAggregator, AggregatePropagatesStats) {
   PropellerStats stats;
   BinaryAddressMapper binary_address_mapper(
       /*selected_functions=*/{}, /*bb_addr_map=*/{}, /*bb_handles=*/{},
-      /*symbol_info_map=*/{});
+      /*symbol_info_map=*/llvm::DenseMap<int, FunctionSymbolInfo>());
 
   auto mock_aggregator = std::make_unique<MockLbrAggregator>();
   EXPECT_CALL(*mock_aggregator, AggregateLbrData)
-      .WillOnce(
-          DoAll(SetArgReferee<2>(PropellerStats{
-                    .profile_stats = {.binary_mmap_num = 1,
-                                      .perf_file_parsed = 2,
-                                      .br_counters_accumulated = 3},
-                    .disassembly_stats = {.could_not_disassemble = {4, 5},
-                                          .may_affect_control_flow = {6, 7},
-                                          .cant_affect_control_flow = {8, 9}}}),
+      .WillOnce(DoAll(
+          SetArgReferee<2>(PropellerStats{
+              .profile_stats = {.binary_mmap_num = 1,
+                                .perf_file_parsed = 2,
+                                .br_counters_accumulated = 3},
+              .disassembly_stats = {.could_not_disassemble = {4, 5},
+                                    .may_affect_control_flow = {6, 7},
+                                    .cant_affect_control_flow = {8, 9}}}),
 
-                Return(LbrAggregation{})));
+          Return(LbrAggregation{
+              .branch_counters = llvm::DenseMap<BinaryAddressBranch, int64_t>(),
+              .fallthrough_counters =
+                  llvm::DenseMap<BinaryAddressFallthrough, int64_t>()})));
   LbrBranchAggregator aggregator(std::move(mock_aggregator), options,
                                  binary_content);
 

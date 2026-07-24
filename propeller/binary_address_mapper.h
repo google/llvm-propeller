@@ -22,14 +22,14 @@
 #include <vector>
 
 #include "absl/container/btree_set.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ELFTypes.h"
@@ -121,11 +121,10 @@ struct FlatBbHandleBranchPath {
 // Finds basic block entries from binary addresses.
 class BinaryAddressMapper {
  public:
-  BinaryAddressMapper(
-      absl::btree_set<int> selected_functions,
-      std::vector<llvm::object::BBAddrMap> bb_addr_map,
-      std::vector<BbHandle> bb_handles,
-      absl::flat_hash_map<int, FunctionSymbolInfo> symbol_info_map);
+  BinaryAddressMapper(absl::btree_set<int> selected_functions,
+                      std::vector<llvm::object::BBAddrMap> bb_addr_map,
+                      std::vector<BbHandle> bb_handles,
+                      llvm::DenseMap<int, FunctionSymbolInfo> symbol_info_map);
 
   BinaryAddressMapper(const BinaryAddressMapper&) = delete;
   BinaryAddressMapper& operator=(const BinaryAddressMapper&) = delete;
@@ -136,7 +135,7 @@ class BinaryAddressMapper {
     return bb_addr_map_;
   }
 
-  const absl::flat_hash_map<int, FunctionSymbolInfo>& symbol_info_map() const {
+  const llvm::DenseMap<int, FunctionSymbolInfo>& symbol_info_map() const {
     return symbol_info_map_;
   }
 
@@ -237,7 +236,8 @@ class BinaryAddressMapper {
 
   // Returns the name associated with the given `bb_handle`.
   std::string GetName(BbHandle bb_handle) const {
-    const auto& aliases = symbol_info_map_.at(bb_handle.function_index).aliases;
+    const auto& aliases =
+        symbol_info_map_.find(bb_handle.function_index)->second.aliases;
     std::string func_name =
         aliases.empty()
             ? absl::StrCat(
@@ -296,7 +296,7 @@ class BinaryAddressMapper {
 
   // A map from function indices to their symbol info (function names and
   // section name).
-  absl::flat_hash_map<int, FunctionSymbolInfo> symbol_info_map_;
+  llvm::DenseMap<int, FunctionSymbolInfo> symbol_info_map_;
 };
 
 // Builds a `BinaryAddressMapper` for binary represented by `binary_content` and
@@ -306,7 +306,7 @@ class BinaryAddressMapper {
 absl::StatusOr<std::unique_ptr<BinaryAddressMapper>> BuildBinaryAddressMapper(
     const PropellerOptions& options, const BinaryContent& binary_content,
     PropellerStats& stats,
-    const absl::flat_hash_set<uint64_t>* hot_addresses = nullptr);
+    const llvm::DenseSet<uint64_t>* hot_addresses = nullptr);
 
 }  // namespace propeller
 

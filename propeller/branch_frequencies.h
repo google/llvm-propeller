@@ -18,7 +18,7 @@
 #include <cstdint>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
+#include "llvm/ADT/DenseMap.h"
 #include "propeller/binary_address_branch.h"
 #include "propeller/branch_frequencies.pb.h"
 
@@ -41,10 +41,10 @@ struct BranchFrequencies {
 
   // The number of times each branch was taken, keyed by the binary address of
   // its source and destination.
-  absl::flat_hash_map<BinaryAddressBranch, int64_t> taken_branch_counters;
+  llvm::DenseMap<BinaryAddressBranch, int64_t> taken_branch_counters;
   // The number of times each branch was not taken, keyed by the binary address
   // of the instruction.
-  absl::flat_hash_map<BinaryAddressNotTakenBranch, int64_t>
+  llvm::DenseMap<BinaryAddressNotTakenBranch, int64_t>
       not_taken_branch_counters;
 };
 }  // namespace propeller

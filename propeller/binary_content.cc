@@ -23,7 +23,6 @@
 #include <vector>
 
 #include "absl/container/btree_map.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -33,6 +32,7 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/BinaryFormat/ELF.h"
@@ -240,19 +240,19 @@ absl::Status ELFFileUtil<ELFT>::InitializeKernelModule(
         "failed to get data for .modinfo section");
   }
 
-  binary_content.kernel_module = BinaryContent::KernelModule{};
-  absl::string_view section_content(
+  binary_content.kernel_module.emplace();
+  llvm::StringRef section_content(
       reinterpret_cast<const char*>(modinfo_data->data()),
       modinfo_data->size());
   ASSIGN_OR_RETURN(binary_content.kernel_module->modinfo,
                    ParseModInfoSectionContent(section_content));
   if (auto name = binary_content.kernel_module->modinfo.find("name");
       name != binary_content.kernel_module->modinfo.end()) {
-    LOG(INFO) << "Found kernel module name: " << name->second;
+    LOG(INFO) << "Found kernel module name: " << name->second.str();
   }
   if (auto desc = binary_content.kernel_module->modinfo.find("description");
       desc != binary_content.kernel_module->modinfo.end())
-    LOG(INFO) << "Found kernel module description: " << desc->second;
+    LOG(INFO) << "Found kernel module description: " << desc->second.str();
   return absl::OkStatus();
 }
 
@@ -278,9 +278,9 @@ absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> ReadAArch64ThunkSymbols(
 }  // namespace
 
 namespace propeller {
-absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
+llvm::DenseMap<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
 ReadSymbolTable(const BinaryContent& binary_content) {
-  absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
+  llvm::DenseMap<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
       symtab;
   for (llvm::object::SymbolRef sr : binary_content.object_file->symbols()) {
     llvm::object::ELFSymbolRef symbol(sr);
@@ -355,10 +355,10 @@ absl::StatusOr<BbAddrMapData> ReadBbAddrMap(
                           : std::nullopt};
 }
 
-absl::flat_hash_map<uint64_t, FunctionSymbolInfo> GetSymbolInfoMap(
+llvm::DenseMap<uint64_t, FunctionSymbolInfo> GetSymbolInfoMap(
     const BinaryContent& binary_content) {
   auto symtab = ReadSymbolTable(binary_content);
-  absl::flat_hash_map<uint64_t, FunctionSymbolInfo> symbol_info_map;
+  llvm::DenseMap<uint64_t, FunctionSymbolInfo> symbol_info_map;
   for (const auto& [address, symbols] : symtab) {
     FunctionSymbolInfo symbol_info;
     for (const llvm::object::ELFSymbolRef sr : symbols) {
@@ -366,18 +366,18 @@ absl::flat_hash_map<uint64_t, FunctionSymbolInfo> GetSymbolInfoMap(
       symbol_info.section_name = llvm::cantFail(
           llvm::cantFail(symbols.front().getSection())->getName());
     }
-    symbol_info_map.emplace(address, std::move(symbol_info));
+    symbol_info_map.try_emplace(address, std::move(symbol_info));
   }
   return symbol_info_map;
 }
 
-absl::StatusOr<absl::flat_hash_map<absl::string_view, absl::string_view>>
-ELFFileUtilBase::ParseModInfoSectionContent(absl::string_view section_content) {
+absl::StatusOr<llvm::DenseMap<llvm::StringRef, llvm::StringRef>>
+ELFFileUtilBase::ParseModInfoSectionContent(llvm::StringRef section_content) {
   // .modinfo section is arranged as <key>=<value> pairs, with \0 as separators,
   // the last <key>=<value> pair also ends with \0.
   if (section_content.empty())
     return absl::FailedPreconditionError("empty .modinfo section");
-  absl::flat_hash_map<absl::string_view, absl::string_view> modinfo;
+  llvm::DenseMap<llvm::StringRef, llvm::StringRef> modinfo;
   const char *q, *eq, *p = section_content.data();
   const char* end = p + section_content.size();
   while (p < end) {
@@ -400,7 +400,7 @@ ELFFileUtilBase::ParseModInfoSectionContent(absl::string_view section_content) {
     if (eq != p && eq != q) {
       CHECK(eq > p);
       CHECK(eq < q);
-      modinfo.emplace(absl::string_view(p, eq - p), absl::string_view(eq + 1));
+      modinfo.try_emplace(llvm::StringRef(p, eq - p), llvm::StringRef(eq + 1));
     } else {
       return absl::FailedPreconditionError(
           "malformed .modinfo entry: entry contains only key or value");
@@ -453,13 +453,13 @@ std::unique_ptr<ELFFileUtilBase> CreateELFFileUtil(
 //  - setup "PIE" bit
 //  - read loadable and executable segments
 absl::StatusOr<std::unique_ptr<BinaryContent>> GetBinaryContent(
-    absl::string_view binary_file_name) {
+    llvm::StringRef binary_file_name) {
   auto binary_content = std::make_unique<BinaryContent>();
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> file =
       llvm::MemoryBuffer::getFile(binary_file_name);
   if (!file) {
     return absl::FailedPreconditionError(
-        absl::StrCat("Failed to read file '", binary_file_name,
+        absl::StrCat("Failed to read file '", binary_file_name.str(),
                      "': ", file.getError().message()));
   }
   llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>> obj =
@@ -470,7 +470,7 @@ absl::StatusOr<std::unique_ptr<BinaryContent>> GetBinaryContent(
     llvm::raw_string_ostream raw_string_ostream(error_message);
     raw_string_ostream << obj.takeError();
     return absl::FailedPreconditionError(
-        absl::StrCat("Not a valid ELF file '", binary_file_name,
+        absl::StrCat("Not a valid ELF file '", binary_file_name.str(),
                      "': ", raw_string_ostream.str()));
   }
   llvm::object::ELFObjectFileBase* elf_obj =
@@ -478,9 +478,9 @@ absl::StatusOr<std::unique_ptr<BinaryContent>> GetBinaryContent(
           (*obj).get());
   if (!elf_obj) {
     return absl::FailedPreconditionError(
-        absl::StrCat("Not a valid ELF file '", binary_file_name, "."));
+        absl::StrCat("Not a valid ELF file '", binary_file_name.str(), "."));
   }
-  binary_content->file_name = binary_file_name;
+  binary_content->file_name = binary_file_name.str();
   binary_content->file_content = std::move(*file);
   binary_content->object_file = std::move(*obj);
 
@@ -497,11 +497,11 @@ absl::StatusOr<std::unique_ptr<BinaryContent>> GetBinaryContent(
   }
 
   binary_content->is_pie = (elf_obj->getEType() == llvm::ELF::ET_DYN);
-  LOG(INFO) << "'" << binary_file_name
+  LOG(INFO) << "'" << binary_file_name.str()
             << "' is PIE: " << binary_content->is_pie;
 
   binary_content->is_relocatable = (elf_obj->getEType() == llvm::ELF::ET_REL);
-  LOG(INFO) << "'" << binary_file_name
+  LOG(INFO) << "'" << binary_file_name.str()
             << "' is relocatable: " << binary_content->is_relocatable;
 
   std::unique_ptr<ELFFileUtilBase> elf_file_util =
@@ -509,7 +509,7 @@ absl::StatusOr<std::unique_ptr<BinaryContent>> GetBinaryContent(
   CHECK(elf_file_util != nullptr);
   binary_content->build_id = elf_file_util->GetBuildId();
   if (!binary_content->build_id.empty())
-    LOG(INFO) << "Build Id found in '" << binary_file_name
+    LOG(INFO) << "Build Id found in '" << binary_file_name.str()
               << "': " << binary_content->build_id;
 
   if (binary_content->is_relocatable) {
@@ -524,8 +524,7 @@ absl::StatusOr<std::unique_ptr<BinaryContent>> GetBinaryContent(
 }
 
 absl::StatusOr<int64_t> GetSymbolAddress(
-    const llvm::object::ObjectFile& object_file,
-    absl::string_view symbol_name) {
+    const llvm::object::ObjectFile& object_file, llvm::StringRef symbol_name) {
   const llvm::object::ELFObjectFileBase* elf_object =
       llvm::dyn_cast<const llvm::object::ELFObjectFileBase,
                      const llvm::object::ObjectFile>(&object_file);
@@ -535,19 +534,18 @@ absl::StatusOr<int64_t> GetSymbolAddress(
   }
   for (llvm::object::ELFSymbolRef symbol : elf_object->symbols()) {
     llvm::Expected<llvm::StringRef> current_symbol_name = symbol.getName();
-    if (!current_symbol_name ||
-        absl::string_view(*current_symbol_name) != symbol_name) {
+    if (!current_symbol_name || *current_symbol_name != symbol_name) {
       continue;
     }
     llvm::Expected<uint64_t> symbol_address = symbol.getAddress();
     if (!symbol_address) {
-      LOG(ERROR) << symbol_name << " has no address: "
+      LOG(ERROR) << symbol_name.str() << " has no address: "
                  << llvm::toString(symbol_address.takeError());
       continue;
     }
     return *symbol_address;
   }
-  return absl::NotFoundError(absl::StrCat(symbol_name, " not found"));
+  return absl::NotFoundError(absl::StrCat(symbol_name.str(), " not found"));
 }
 
 }  // namespace propeller
