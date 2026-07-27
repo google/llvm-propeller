@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -158,6 +159,12 @@ class PerfDataReader {
 
   // Returns if the perf data was collected in kernel mode.
   bool IsKernelMode() const;
+
+  // Extracts the PID for the given event, handling kernel mode correctly.
+  // Returns std::nullopt if the event does not have a PID or if the PID is not
+  // matched by any mmap in binary_mmaps_.
+  std::optional<uint32_t> GetPid(
+      const quipper::PerfDataProto_SampleEvent& event) const;
 
  private:
   PerfDataProvider::BufferHandle perf_data_;

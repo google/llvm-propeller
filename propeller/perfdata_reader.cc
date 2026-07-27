@@ -404,17 +404,9 @@ void PerfDataReader::AggregateLBR(LbrAggregation* result) const {
   const bool is_kernel_mode = IsKernelMode();
   if (is_kernel_mode) LOG(WARNING) << "Input binary is kernel";
   ReadWithSampleCallBack([&](const quipper::PerfDataProto::SampleEvent& event) {
-    uint32_t pid;
-    if (is_kernel_mode) {
-      // For kernel, we do not filter event by pid, we check all LBR events.
-      // Because kernel branch events can exist in any process's LBR stack.
-      pid = kKernelPid;
-    } else {
-      if (!event.has_pid() ||
-          binary_mmaps_.find(event.pid()) == binary_mmaps_.end())
-        return;
-      pid = event.pid();
-    }
+    std::optional<uint32_t> opt_pid = GetPid(event);
+    if (!opt_pid.has_value()) return;
+    uint32_t pid = *opt_pid;
     const auto& brstack = event.branch_stack();
     if (brstack.empty()) return;
     uint64_t last_from = kInvalidBinaryAddress;
@@ -465,6 +457,20 @@ absl::Status PerfDataReader::AggregateSpe(BranchFrequencies& result) const {
 
 bool PerfDataReader::IsKernelMode() const {
   return binary_mmaps_.contains(kKernelPid);
+}
+
+std::optional<uint32_t> PerfDataReader::GetPid(
+    const quipper::PerfDataProto_SampleEvent& event) const {
+  if (IsKernelMode()) {
+    // For kernel, we do not filter event by pid, we check all LBR events.
+    // Because kernel branch events can exist in any process's LBR stack.
+    return kKernelPid;
+  }
+  if (!event.has_pid() ||
+      binary_mmaps_.find(event.pid()) == binary_mmaps_.end()) {
+    return std::nullopt;
+  }
+  return event.pid();
 }
 
 absl::StatusOr<PerfDataReader> BuildPerfDataReader(
