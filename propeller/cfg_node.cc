@@ -23,15 +23,19 @@
 
 #include "absl/algorithm/container.h"
 #include "absl/functional/function_ref.h"
-#include "absl/strings/str_cat.h"
+#include "llvm/ADT/Twine.h"
 #include "propeller/cfg_edge_kind.h"
 
 namespace propeller {
 
 std::string CFGNode::GetName() const {
-  std::string bb_name = absl::StrCat(function_index());
-  if (!is_entry()) absl::StrAppend(&bb_name, ".", bb_index(), ".id", bb_id());
-  if (clone_number() != 0) absl::StrAppend(&bb_name, ".c", clone_number());
+  std::string bb_name = llvm::Twine(function_index()).str();
+  if (!is_entry())
+    bb_name += (llvm::Twine(".") + llvm::Twine(bb_index()) + ".id" +
+                llvm::Twine(bb_id()))
+                   .str();
+  if (clone_number() != 0)
+    bb_name += (llvm::Twine(".c") + llvm::Twine(clone_number())).str();
   return bb_name;
 }
 

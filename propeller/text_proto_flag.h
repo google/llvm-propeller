@@ -18,8 +18,8 @@
 #include <string>
 
 #include "absl/log/check.h"
-#include "absl/strings/string_view.h"
 #include "google/protobuf/text_format.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace propeller {
 
@@ -30,7 +30,7 @@ struct TextProtoFlag {
 };
 
 template <typename Proto>
-inline bool AbslParseFlag(absl::string_view text, TextProtoFlag<Proto>* flag,
+inline bool AbslParseFlag(llvm::StringRef text, TextProtoFlag<Proto>* flag,
                           std::string* err) {
   return google::protobuf::TextFormat::ParseFromString(text, &flag->message);
 }

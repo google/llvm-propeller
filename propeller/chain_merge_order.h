@@ -16,7 +16,7 @@
 #define PROPELLER_CHAIN_MERGE_ORDER_H_
 
 #include "absl/log/log.h"
-#include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace propeller {
 // This enum represents different merge orders for two chains S and U.
@@ -30,7 +30,7 @@ enum class ChainMergeOrder {
   kS2US1,
 };
 
-inline absl::string_view GetMergeOrderName(ChainMergeOrder merge_order) {
+inline llvm::StringRef GetMergeOrderName(ChainMergeOrder merge_order) {
   switch (merge_order) {
     case ChainMergeOrder::kSU:
       return "SU";

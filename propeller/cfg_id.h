@@ -23,6 +23,7 @@
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "llvm/ADT/Twine.h"
 
 namespace propeller {
 // CFGNode Id unique with a single CFG.
@@ -72,9 +73,10 @@ struct FullIntraCfgId {
   // number if not zero. This is used to identify a basic block in the propeller
   // profile.
   std::string profile_bb_id() const {
-    std::string result = absl::StrCat(bb_id);
+    std::string result = llvm::Twine(bb_id).str();
     if (intra_cfg_id.clone_number != 0)
-      absl::StrAppend(&result, ".", intra_cfg_id.clone_number);
+      result +=
+          (llvm::Twine(".") + llvm::Twine(intra_cfg_id.clone_number)).str();
     return result;
   }
 };

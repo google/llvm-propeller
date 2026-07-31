@@ -24,23 +24,23 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/DebugInfo/DWARF/DWARFCompileUnit.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
 #include "llvm/DebugInfo/DWARF/DWARFDie.h"
 #include "llvm/DebugInfo/DWARF/DWARFFormValue.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/FormatVariadic.h"
 
 namespace propeller {
 
 absl::StatusOr<std::unique_ptr<llvm::DWARFContext>> CreateDWARFContext(
-    const llvm::object::ObjectFile& obj, absl::string_view dwp_file) {
+    const llvm::object::ObjectFile& obj, llvm::StringRef dwp_file) {
   std::unique_ptr<llvm::DWARFContext> dwarf_context =
       llvm::DWARFContext::create(
           obj, llvm::DWARFContext::ProcessDebugRelocations::Process,
-          /*const LoadedObjectInfo *L=*/nullptr, std::string(dwp_file));
+          /*const LoadedObjectInfo *L=*/nullptr, dwp_file.str());
   CHECK(dwarf_context != nullptr);
   if (dwp_file.empty() &&
       absl::c_any_of(dwarf_context->compile_units(),
@@ -58,18 +58,19 @@ absl::StatusOr<std::unique_ptr<llvm::DWARFContext>> CreateDWARFContext(
   return dwarf_context;
 }
 
-absl::StatusOr<absl::string_view> Addr2Cu::GetCompileUnitFileNameForCodeAddress(
+absl::StatusOr<llvm::StringRef> Addr2Cu::GetCompileUnitFileNameForCodeAddress(
     uint64_t code_address) const {
   llvm::DWARFCompileUnit* unit =
       dwarf_context_.getCompileUnitForCodeAddress(code_address);
   if (unit == nullptr) {
     return absl::FailedPreconditionError(
-        absl::StrFormat("no compile unit found on address 0x%x", code_address));
+        llvm::formatv("no compile unit found on address 0x{0:x}", code_address)
+            .str());
   }
   llvm::DWARFDie die = unit->getNonSkeletonUnitDIE();
   std::optional<llvm::DWARFFormValue> form_value =
       die.findRecursively({llvm::dwarf::DW_AT_name});
   llvm::StringRef name = llvm::dwarf::toStringRef(form_value, "");
-  return absl::string_view(name.data(), name.size());
+  return name;
 }
 }  // namespace propeller

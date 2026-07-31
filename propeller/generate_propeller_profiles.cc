@@ -38,8 +38,8 @@
 #include "absl/flags/parse.h"
 #include "absl/flags/usage.h"
 #include "absl/log/check.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Twine.h"
 #include "propeller/profile_generator.h"
 #include "propeller/propeller_options.pb.h"
 #include "propeller/text_proto_flag.h"
@@ -51,7 +51,7 @@ enum class ProfileType {
   kFrequenciesProto,
 };
 
-inline bool AbslParseFlag(absl::string_view text, ProfileType* out,
+inline bool AbslParseFlag(llvm::StringRef text, ProfileType* out,
                           std::string* err);
 
 inline std::string AbslUnparseFlag(ProfileType type);
@@ -74,9 +74,9 @@ using ::propeller::GeneratePropellerProfiles;
 using ::propeller::InputProfile;
 using ::propeller::PropellerOptions;
 
-inline bool AbslParseFlag(absl::string_view text, ProfileType* out,
+inline bool AbslParseFlag(llvm::StringRef text, ProfileType* out,
                           std::string* err) {
-  const absl::flat_hash_map<absl::string_view, ProfileType> kFlagOptions = {
+  const absl::flat_hash_map<llvm::StringRef, ProfileType> kFlagOptions = {
       {"PERF_LBR", ProfileType::kPerfLbr},
       {"PERF_SPE", ProfileType::kPerfSpe},
       {"FREQUENCIES_PROTO", ProfileType::kFrequenciesProto},
@@ -87,7 +87,7 @@ inline bool AbslParseFlag(absl::string_view text, ProfileType* out,
     *out = found->second;
     return true;
   }
-  *err = absl::StrCat("Unknown profile type \"", text, "\"");
+  *err = (llvm::Twine("Unknown profile type \"") + text + "\"").str();
   return false;
 }
 
