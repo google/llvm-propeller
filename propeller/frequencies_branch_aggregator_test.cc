@@ -23,6 +23,7 @@
 #include "absl/status/statusor.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/Object/ELFTypes.h"
 #include "propeller/binary_address_mapper.h"
 #include "propeller/binary_content.h"
@@ -76,12 +77,13 @@ TEST(FrequenciesBranchAggregator, GetBranchEndpointAddresses) {
   PropellerStats stats;
 
   EXPECT_THAT(FrequenciesBranchAggregator(
-                  {.taken_branch_counters = {{{.from = 1, .to = 2}, 1},
-                                             {{.from = 3, .to = 3}, 1}},
-                   .not_taken_branch_counters = {{{.address = 3}, 1},
-                                                 {{.address = 4}, 1},
-                                                 {{.address = 4}, 1},
-                                                 {{.address = 5}, 1}}})
+                  BranchFrequencies{
+                      .taken_branch_counters = {{{.from = 1, .to = 2}, 1},
+                                                {{.from = 3, .to = 3}, 1}},
+                      .not_taken_branch_counters = {{{.address = 3}, 1},
+                                                    {{.address = 4}, 1},
+                                                    {{.address = 4}, 1},
+                                                    {{.address = 5}, 1}}})
                   .GetBranchEndpointAddresses(),
               IsOkAndHolds(UnorderedElementsAre(1, 2, 3, 4, 5)));
 }
@@ -92,7 +94,7 @@ TEST(FrequenciesBranchAggregator, AggregatePropagatesErrors) {
   PropellerStats stats;
   BinaryAddressMapper binary_address_mapper(
       /*selected_functions=*/{}, /*bb_addr_map=*/{}, /*bb_handles=*/{},
-      /*symbol_info_map=*/{});
+      /*symbol_info_map=*/llvm::DenseMap<int, FunctionSymbolInfo>());
   auto mock_aggregator = std::make_unique<MockFrequenciesAggregator>();
   EXPECT_CALL(*mock_aggregator, AggregateBranchFrequencies)
       .WillOnce(Return(absl::InternalError("")));
@@ -109,15 +111,20 @@ TEST(FrequenciesBranchAggregator, AggregatePropagatesStats) {
   PropellerStats stats;
   BinaryAddressMapper binary_address_mapper(
       /*selected_functions=*/{}, /*bb_addr_map=*/{}, /*bb_handles=*/{},
-      /*symbol_info_map=*/{});
+      /*symbol_info_map=*/llvm::DenseMap<int, FunctionSymbolInfo>());
   auto mock_aggregator = std::make_unique<MockFrequenciesAggregator>();
   EXPECT_CALL(*mock_aggregator, AggregateBranchFrequencies)
-      .WillOnce(DoAll(SetArgReferee<2>(PropellerStats{
-                          .profile_stats = {.binary_mmap_num = 1,
-                                            .perf_file_parsed = 2,
-                                            .br_counters_accumulated = 3}}),
+      .WillOnce(DoAll(
+          SetArgReferee<2>(
+              PropellerStats{.profile_stats = {.binary_mmap_num = 1,
+                                               .perf_file_parsed = 2,
+                                               .br_counters_accumulated = 3}}),
 
-                      Return(BranchFrequencies{})));
+          Return(BranchFrequencies{
+              .taken_branch_counters =
+                  llvm::DenseMap<BinaryAddressBranch, int64_t>(),
+              .not_taken_branch_counters =
+                  llvm::DenseMap<BinaryAddressNotTakenBranch, int64_t>()})));
 
   FrequenciesBranchAggregator aggregator(std::move(mock_aggregator), options,
                                          binary_content);
@@ -133,8 +140,11 @@ TEST(FrequenciesBranchAggregator, AggregateInfersUnconditionalFallthroughs) {
   PropellerStats stats;
   EXPECT_THAT(
       FrequenciesBranchAggregator(
-          {.taken_branch_counters = {{{.from = 0x1000, .to = 0x1008}, 7},
-                                     {{.from = 0x1010, .to = 0x1008}, 10}}})
+          BranchFrequencies{
+              .taken_branch_counters = {{{.from = 0x1000, .to = 0x1008}, 7},
+                                        {{.from = 0x1010, .to = 0x1008}, 10}},
+              .not_taken_branch_counters =
+                  llvm::DenseMap<BinaryAddressNotTakenBranch, int64_t>()})
           .Aggregate(BinaryAddressMapper(
                          /*selected_functions=*/{1}, /*bb_addr_map=*/
                          {{{{.BaseAddress = 0x1000,
@@ -161,7 +171,8 @@ TEST(FrequenciesBranchAggregator, AggregateInfersUnconditionalFallthroughs) {
                          {{.function_index = 0, .bb_index = 0},
                           {.function_index = 0, .bb_index = 1},
                           {.function_index = 0, .bb_index = 2}},
-                         /*symbol_info_map=*/{}),
+                         /*symbol_info_map=*/
+                         llvm::DenseMap<int, FunctionSymbolInfo>()),
                      stats),
       IsOkAndHolds(AllOf(
           Field("branch_counters", &BranchAggregation::branch_counters,
@@ -176,9 +187,12 @@ TEST(FrequenciesBranchAggregator, AggregatePropagatesFallthroughs) {
   PropellerStats stats;
   EXPECT_THAT(
       FrequenciesBranchAggregator(
-          {.taken_branch_counters = {{{.from = 0x1014, .to = 0x1000}, 50},
-                                     {{.from = 0x1014, .to = 0x1004}, 50},
-                                     {{.from = 0x1014, .to = 0x1010}, 50}}})
+          BranchFrequencies{
+              .taken_branch_counters = {{{.from = 0x1014, .to = 0x1000}, 50},
+                                        {{.from = 0x1014, .to = 0x1004}, 50},
+                                        {{.from = 0x1014, .to = 0x1010}, 50}},
+              .not_taken_branch_counters =
+                  llvm::DenseMap<BinaryAddressNotTakenBranch, int64_t>()})
           .Aggregate(BinaryAddressMapper(
                          /*selected_functions=*/{1}, /*bb_addr_map=*/
                          {{{{.BaseAddress = 0x1000,
@@ -206,7 +220,8 @@ TEST(FrequenciesBranchAggregator, AggregatePropagatesFallthroughs) {
                           {.function_index = 0, .bb_index = 1},
                           {.function_index = 0, .bb_index = 2},
                           {.function_index = 0, .bb_index = 3}},
-                         /*symbol_info_map=*/{}),
+                         /*symbol_info_map=*/
+                         llvm::DenseMap<int, FunctionSymbolInfo>()),
                      stats),
       IsOkAndHolds(Field(
           "fallthrough_counters", &BranchAggregation::fallthrough_counters,
@@ -219,7 +234,10 @@ TEST(FrequenciesBranchAggregator, AggregateRespectsNotTakenBranches) {
   PropellerStats stats;
   EXPECT_THAT(
       FrequenciesBranchAggregator(
-          {.not_taken_branch_counters = {{{.address = 0x1000}, 19}}},
+          BranchFrequencies{
+              .taken_branch_counters =
+                  llvm::DenseMap<BinaryAddressBranch, int64_t>(),
+              .not_taken_branch_counters = {{{.address = 0x1000}, 19}}},
           /*stats=*/{}, /*instruction_size=*/4)
           .Aggregate(BinaryAddressMapper(
                          /*selected_functions=*/{1}, /*bb_addr_map=*/
@@ -238,7 +256,8 @@ TEST(FrequenciesBranchAggregator, AggregateRespectsNotTakenBranches) {
                          /*bb_handles=*/
                          {{.function_index = 0, .bb_index = 0},
                           {.function_index = 0, .bb_index = 1}},
-                         /*symbol_info_map=*/{}),
+                         /*symbol_info_map=*/
+                         llvm::DenseMap<int, FunctionSymbolInfo>()),
                      stats),
       IsOkAndHolds(Field(
           "fallthrough_counters", &BranchAggregation::fallthrough_counters,
@@ -249,9 +268,10 @@ TEST(FrequenciesBranchAggregator, AggregateIgnoresMidFunctionNotTakenBranches) {
   PropellerStats stats;
   EXPECT_THAT(
       FrequenciesBranchAggregator(
-          {.taken_branch_counters = {{{.from = 0x1000, .to = 0x1008}, 7},
-                                     {{.from = 0x1010, .to = 0x1008}, 10}},
-           .not_taken_branch_counters = {{{.address = 0x1008}, 19}}},
+          BranchFrequencies{
+              .taken_branch_counters = {{{.from = 0x1000, .to = 0x1008}, 7},
+                                        {{.from = 0x1010, .to = 0x1008}, 10}},
+              .not_taken_branch_counters = {{{.address = 0x1008}, 19}}},
           /*stats=*/{}, /*instruction_size=*/4)
           .Aggregate(BinaryAddressMapper(
                          /*selected_functions=*/{1}, /*bb_addr_map=*/
@@ -275,7 +295,8 @@ TEST(FrequenciesBranchAggregator, AggregateIgnoresMidFunctionNotTakenBranches) {
                          {{.function_index = 0, .bb_index = 0},
                           {.function_index = 0, .bb_index = 1},
                           {.function_index = 0, .bb_index = 2}},
-                         /*symbol_info_map=*/{}),
+                         /*symbol_info_map=*/
+                         llvm::DenseMap<int, FunctionSymbolInfo>()),
                      stats),
       IsOkAndHolds(AllOf(
           Field("branch_counters", &BranchAggregation::branch_counters,
@@ -291,7 +312,10 @@ TEST(FrequenciesBranchAggregator,
   PropellerStats stats;
   EXPECT_THAT(
       FrequenciesBranchAggregator(
-          {.not_taken_branch_counters = {{{.address = 0x1000}, 100}}},
+          BranchFrequencies{
+              .taken_branch_counters =
+                  llvm::DenseMap<BinaryAddressBranch, int64_t>(),
+              .not_taken_branch_counters = {{{.address = 0x1000}, 100}}},
           /*stats=*/{}, /*instruction_size=*/4)
           .Aggregate(BinaryAddressMapper(
                          /*selected_functions=*/{1}, /*bb_addr_map=*/
@@ -310,7 +334,8 @@ TEST(FrequenciesBranchAggregator,
                          /*bb_handles=*/
                          {{.function_index = 0, .bb_index = 0},
                           {.function_index = 0, .bb_index = 1}},
-                         /*symbol_info_map=*/{}),
+                         /*symbol_info_map=*/
+                         llvm::DenseMap<int, FunctionSymbolInfo>()),
                      stats),
       IsOkAndHolds(Field("fallthrough_counters",
                          &BranchAggregation::fallthrough_counters, IsEmpty())));
@@ -320,8 +345,11 @@ TEST(FrequenciesBranchAggregator, AggregatesBlocksEndingInBranches) {
   PropellerStats stats;
   EXPECT_THAT(
       FrequenciesBranchAggregator(
-          {.taken_branch_counters = {{{.from = 0x1014, .to = 0x1000}, 50},
-                                     {{.from = 0x1000, .to = 0x1014}, 49}}},
+          BranchFrequencies{
+              .taken_branch_counters = {{{.from = 0x1014, .to = 0x1000}, 50},
+                                        {{.from = 0x1000, .to = 0x1014}, 49}},
+              .not_taken_branch_counters =
+                  llvm::DenseMap<BinaryAddressNotTakenBranch, int64_t>()},
           /*stats=*/{}, /*instruction_size=*/4)
           .Aggregate(BinaryAddressMapper(
                          /*selected_functions=*/{1}, /*bb_addr_map=*/
@@ -345,7 +373,8 @@ TEST(FrequenciesBranchAggregator, AggregatesBlocksEndingInBranches) {
                          {{.function_index = 0, .bb_index = 0},
                           {.function_index = 0, .bb_index = 1},
                           {.function_index = 0, .bb_index = 2}},
-                         /*symbol_info_map=*/{}),
+                         /*symbol_info_map=*/
+                         llvm::DenseMap<int, FunctionSymbolInfo>()),
                      stats),
       IsOkAndHolds(Field("fallthrough_counters",
                          &BranchAggregation::fallthrough_counters, IsEmpty())));

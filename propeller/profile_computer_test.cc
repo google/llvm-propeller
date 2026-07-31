@@ -23,7 +23,6 @@
 
 #include "absl/algorithm/container.h"
 #include "absl/container/btree_set.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
@@ -33,6 +32,8 @@
 #include "absl/types/span.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "propeller/binary_address_mapper.h"
 #include "propeller/binary_content.h"
 #include "propeller/branch_aggregation.h"
@@ -70,7 +71,7 @@ using ::testing::UnorderedElementsAre;
 
 class MockBranchAggregator : public BranchAggregator {
  public:
-  MOCK_METHOD(absl::StatusOr<absl::flat_hash_set<uint64_t>>,
+  MOCK_METHOD(absl::StatusOr<llvm::DenseSet<uint64_t>>,
               GetBranchEndpointAddresses, (), (override));
   MOCK_METHOD(absl::StatusOr<BranchAggregation>, Aggregate,
               (const BinaryAddressMapper&, PropellerStats&), (override));
@@ -103,9 +104,12 @@ static std::string GetPropellerTestDataFilePath(absl::string_view filename) {
 TEST(ProfileComputerTest, CreateWithBranchAggregator) {
   auto branch_aggregator = std::make_unique<MockBranchAggregator>();
   EXPECT_CALL(*branch_aggregator, GetBranchEndpointAddresses)
-      .WillOnce(Return(absl::flat_hash_set<uint64_t>()));
+      .WillOnce(Return(llvm::DenseSet<uint64_t>()));
   EXPECT_CALL(*branch_aggregator, Aggregate)
-      .WillOnce(Return(BranchAggregation()));
+      .WillOnce(Return(BranchAggregation{
+          .branch_counters = llvm::DenseMap<BinaryAddressBranch, int64_t>(),
+          .fallthrough_counters =
+              llvm::DenseMap<BinaryAddressFallthrough, int64_t>()}));
 
   PropellerOptions options;
   options.set_binary_name(GetPropellerTestDataFilePath("sample.bin"));

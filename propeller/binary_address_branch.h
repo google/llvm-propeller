@@ -20,6 +20,8 @@
 #include <utility>
 
 #include "absl/strings/str_format.h"
+#include "llvm/ADT/DenseMapInfo.h"
+#include "llvm/ADT/Hashing.h"
 
 namespace propeller {
 // `BinaryAddressBranch` represents a taken branch with endpoints specified as
@@ -88,4 +90,65 @@ struct BinaryAddressFallthrough {
 inline constexpr uint64_t kInvalidBinaryAddress = static_cast<uint64_t>(-1);
 
 }  // namespace propeller
+
+namespace llvm {
+
+template <>
+struct DenseMapInfo<propeller::BinaryAddressBranch> {
+  static inline propeller::BinaryAddressBranch getEmptyKey() {
+    return {propeller::kInvalidBinaryAddress - 2,
+            propeller::kInvalidBinaryAddress - 2};
+  }
+  static inline propeller::BinaryAddressBranch getTombstoneKey() {
+    return {propeller::kInvalidBinaryAddress - 3,
+            propeller::kInvalidBinaryAddress - 3};
+  }
+  static unsigned getHashValue(const propeller::BinaryAddressBranch& Val) {
+    return llvm::hash_combine(Val.from, Val.to);
+  }
+  static bool isEqual(const propeller::BinaryAddressBranch& LHS,
+                      const propeller::BinaryAddressBranch& RHS) {
+    return LHS == RHS;
+  }
+};
+
+template <>
+struct DenseMapInfo<propeller::BinaryAddressNotTakenBranch> {
+  static inline propeller::BinaryAddressNotTakenBranch getEmptyKey() {
+    return {propeller::kInvalidBinaryAddress - 2};
+  }
+  static inline propeller::BinaryAddressNotTakenBranch getTombstoneKey() {
+    return {propeller::kInvalidBinaryAddress - 3};
+  }
+  static unsigned getHashValue(
+      const propeller::BinaryAddressNotTakenBranch& Val) {
+    return llvm::hash_value(Val.address);
+  }
+  static bool isEqual(const propeller::BinaryAddressNotTakenBranch& LHS,
+                      const propeller::BinaryAddressNotTakenBranch& RHS) {
+    return LHS == RHS;
+  }
+};
+
+template <>
+struct DenseMapInfo<propeller::BinaryAddressFallthrough> {
+  static inline propeller::BinaryAddressFallthrough getEmptyKey() {
+    return {propeller::kInvalidBinaryAddress - 2,
+            propeller::kInvalidBinaryAddress - 2};
+  }
+  static inline propeller::BinaryAddressFallthrough getTombstoneKey() {
+    return {propeller::kInvalidBinaryAddress - 3,
+            propeller::kInvalidBinaryAddress - 3};
+  }
+  static unsigned getHashValue(const propeller::BinaryAddressFallthrough& Val) {
+    return llvm::hash_combine(Val.from, Val.to);
+  }
+  static bool isEqual(const propeller::BinaryAddressFallthrough& LHS,
+                      const propeller::BinaryAddressFallthrough& RHS) {
+    return LHS == RHS;
+  }
+};
+
+}  // namespace llvm
+
 #endif  // PROPELLER_BINARY_ADDRESS_BRANCH_H_
