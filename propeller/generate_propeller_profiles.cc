@@ -68,6 +68,9 @@ ABSL_FLAG(std::string, ld_profile, "", "Output ld profile");
 ABSL_FLAG(propeller::TextProtoFlag<propeller::PropellerOptions>,
           propeller_options, {},
           "Override for propeller options (debug only).");
+ABSL_FLAG(bool, use_ml, false, "Use ML model for code layout scoring.");
+ABSL_FLAG(std::string, training_log, "", "Path to the training log.");
+ABSL_FLAG(bool, log_decisions, false, "Log decisions for ML training.");
 
 namespace {
 using ::propeller::GeneratePropellerProfiles;
@@ -122,6 +125,11 @@ int main(int argc, char* argv[]) {
   options.set_binary_name(absl::GetFlag(FLAGS_binary));
   options.set_cluster_out_name(absl::GetFlag(FLAGS_cc_profile));
   options.set_symbol_order_out_name(absl::GetFlag(FLAGS_ld_profile));
+  options.mutable_code_layout_params()->set_use_ml(absl::GetFlag(FLAGS_use_ml));
+  options.mutable_code_layout_params()->set_log_decisions(
+      absl::GetFlag(FLAGS_log_decisions));
+  options.mutable_code_layout_params()->set_training_log_path(
+      absl::GetFlag(FLAGS_training_log));
 
   for (const std::string& profile : absl::GetFlag(FLAGS_profile)) {
     InputProfile* input_profile = options.add_input_profiles();

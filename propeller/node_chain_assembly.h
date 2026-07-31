@@ -137,6 +137,9 @@ class NodeChainAssembly {
     // Whether `NodeChainAssembly::BuildNodeChainAssembly` should return error
     // if the constructed assembly's score gain is zero.
     bool error_on_zero_score_gain = true;
+    // Whether to force building the assembly for logging purposes, ignoring
+    // negative score gains and entry block checks.
+    bool is_mlgo_log_enabled = false;
   };
 
   // Comparator for two NodeChainAssemblies. It compares score_gain and break
@@ -211,6 +214,51 @@ class NodeChainAssembly {
       const CFGNode* node,
       const NodeToBundleMapper::BundleMappingEntry& bundle_mapping) const;
 
+  bool is_legal() const { return is_legal_; }
+
+  float seam1_edge_weight() const { return seam1_edge_weight_; }
+  float seam2_edge_weight() const { return seam2_edge_weight_; }
+  float broken_bond_weight() const { return broken_bond_weight_; }
+
+  float seam1_edge_distance() const { return seam1_edge_distance_; }
+  float seam2_edge_distance() const { return seam2_edge_distance_; }
+  float broken_bond_distance() const { return broken_bond_distance_; }
+
+  const std::array<float, 4>& seam1_edge_type() const {
+    return seam1_edge_type_;
+  }
+  const std::array<float, 4>& seam2_edge_type() const {
+    return seam2_edge_type_;
+  }
+  const std::array<float, 4>& broken_bond_edge_type() const {
+    return broken_bond_edge_type_;
+  }
+
+  // --- ATOMIC SETTERS (Prevents partial-update bugs) ---
+  void set_is_legal(bool val) { is_legal_ = val; }
+  void set_score_gain(double val) { score_gain_ = val; }
+
+  void set_seam_metrics(int seam_idx, float weight, float distance) {
+    if (seam_idx == 0) {
+      seam1_edge_weight_ = weight;
+      seam1_edge_distance_ = distance;
+    } else if (seam_idx == 1) {
+      seam2_edge_weight_ = weight;
+      seam2_edge_distance_ = distance;
+    } else if (seam_idx == 2) {
+      broken_bond_weight_ = weight;
+      broken_bond_distance_ = distance;
+    }
+  }
+
+  void set_all_edge_types(const std::array<float, 4>& t1,
+                          const std::array<float, 4>& t2,
+                          const std::array<float, 4>& tb) {
+    seam1_edge_type_ = t1;
+    seam2_edge_type_ = t2;
+    broken_bond_edge_type_ = tb;
+  }
+
  private:
   explicit NodeChainAssembly(const NodeToBundleMapper& bundle_mapper,
                              const PropellerCodeLayoutScorer& scorer,
@@ -284,6 +332,10 @@ class NodeChainAssembly {
       const NodeToBundleMapper& bundle_mapper,
       const PropellerCodeLayoutScorer& scorer) const;
 
+  // Returns the potential distance of a single edge for this assembly.
+  int ComputeEdgeDistance(const NodeToBundleMapper& bundle_mapper,
+                          const CFGEdge& edge) const;
+
   // Returns the score contribution of a single edge for this assembly.
   double ComputeEdgeScore(const NodeToBundleMapper& bundle_mapper,
                           const PropellerCodeLayoutScorer& scorer,
@@ -310,6 +362,19 @@ class NodeChainAssembly {
   // This value is computed by calling ComputeScoreGain upon construction and is
   // cached here for efficiency.
   double score_gain_;
+
+  // ML Dataset Features
+  bool is_legal_ = true;  // Hard constraints flag (Entry block position)
+
+  float seam1_edge_weight_ = 0.0;
+  float seam2_edge_weight_ = 0.0;
+  float broken_bond_weight_ = 0.0;
+  float seam1_edge_distance_ = 0.0;
+  float seam2_edge_distance_ = 0.0;
+  float broken_bond_distance_ = 0.0;
+  std::array<float, 4> seam1_edge_type_ = {0.0, 0.0, 0.0, 0.0};
+  std::array<float, 4> seam2_edge_type_ = {0.0, 0.0, 0.0, 0.0};
+  std::array<float, 4> broken_bond_edge_type_ = {0.0, 0.0, 0.0, 0.0};
 };
 }  // namespace propeller
 

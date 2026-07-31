@@ -43,6 +43,17 @@ struct FunctionLayoutInfo {
     // Index of this basic block chain in the global layout (zero-based).
     unsigned layout_index;
 
+    // Total size of the chain in bytes.
+    int size = 0;
+
+    // Total execution frequency of the chain.
+    int freq = 0;
+
+    // --- NEW ML FEATURES ---
+    bool is_entry = false;
+    int in_degree = 0;
+    int out_degree = 0;
+
     // Ids of basic blocks in this chain.
     std::vector<BbBundle> bb_bundles;
 

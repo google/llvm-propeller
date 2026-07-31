@@ -15,6 +15,13 @@
 #ifndef PROPELLER_CODE_LAYOUT_SCORER_H_
 #define PROPELLER_CODE_LAYOUT_SCORER_H_
 
+#ifdef LLVM_HAVE_TFLITE
+#include "llvm/Analysis/ModelUnderTrainingRunner.h"
+#endif
+
+#include "llvm/Analysis/MLModelRunner.h"
+#include "llvm/Analysis/TensorSpec.h"
+#include "propeller/cfg.h"
 #include "propeller/cfg_edge.h"
 #include "propeller/propeller_options.pb.h"
 
