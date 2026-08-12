@@ -128,6 +128,7 @@ void AbslStringify(Sink& sink, const PathPredInfo& p) {
 }
 
 struct PathNodeArg {
+  // Flat bb index of the basic block associated with this path node.
   int node_bb_index = 0;
   PathPredInfo path_pred_info;
   // `PropellerzPathProfileConverter` needs pointer stability. So we use

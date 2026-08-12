@@ -24,6 +24,7 @@
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -193,13 +194,23 @@ class BinaryAddressMapper {
   // `bb_handle`.
   const llvm::object::BBAddrMap& GetFunctionEntry(
       const BbHandle& bb_handle) const {
-    return bb_addr_map_.at(bb_handle.function_index);
+    CHECK_GE(bb_handle.function_index, 0)
+        << "Function index is negative for bb_handle: " << bb_handle;
+    CHECK_LT(bb_handle.function_index, bb_addr_map_.size())
+        << "Function index out of range for bb_handle: " << bb_handle
+        << ", total functions in bb_addr_map_: " << bb_addr_map_.size();
+    return bb_addr_map_[bb_handle.function_index];
   }
 
   const llvm::object::BBAddrMap::BBRangeEntry& GetBBRangeEntry(
       const BbHandle& bb_handle) const {
-    return bb_addr_map_.at(bb_handle.function_index)
-        .getBBRanges()[bb_handle.range_index];
+    const llvm::object::BBAddrMap& function_entry = GetFunctionEntry(bb_handle);
+    CHECK_GE(bb_handle.range_index, 0)
+        << "Range index is negative for bb_handle: " << bb_handle;
+    CHECK_LT(bb_handle.range_index, function_entry.getBBRanges().size())
+        << "Range index out of range for bb_handle: " << bb_handle
+        << ", total BBRanges: " << function_entry.getBBRanges().size();
+    return function_entry.getBBRanges()[bb_handle.range_index];
   }
 
   // Returns the BbHandle associated with the basic block with flat BB handle
@@ -220,10 +231,14 @@ class BinaryAddressMapper {
   // Returns the basic block's address map entry associated with the given
   // `bb_handle`.
   const llvm::object::BBAddrMap::BBEntry& GetBBEntry(BbHandle bb_handle) const {
-    return GetFunctionEntry(bb_handle)
-        .getBBRanges()
-        .at(bb_handle.range_index)
-        .BBEntries.at(bb_handle.bb_index);
+    const llvm::object::BBAddrMap::BBRangeEntry& range_entry =
+        GetBBRangeEntry(bb_handle);
+    CHECK_GE(bb_handle.bb_index, 0)
+        << "BB index is negative for bb_handle: " << bb_handle;
+    CHECK_LT(bb_handle.bb_index, range_entry.BBEntries.size())
+        << "BB index out of range for bb_handle: " << bb_handle
+        << ", total BBEntries: " << range_entry.BBEntries.size();
+    return range_entry.BBEntries[bb_handle.bb_index];
   }
 
   uint64_t GetAddress(BbHandle bb_handle) const {
