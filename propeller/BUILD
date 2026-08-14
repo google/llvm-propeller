@@ -234,7 +234,10 @@ cc_library(
 cc_library(
     name = "bb_handle",
     hdrs = ["bb_handle.h"],
-    deps = ["@abseil-cpp//absl/strings:str_format"],
+    deps = [
+        "@abseil-cpp//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
+    ],
 )
 
 cc_library(
@@ -306,6 +309,7 @@ cc_library(
     deps = [
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
     ],
 )
 

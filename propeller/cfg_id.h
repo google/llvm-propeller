@@ -21,8 +21,11 @@
 #include <tuple>
 #include <utility>
 
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "llvm/ADT/DenseMapInfo.h"
+#include "llvm/ADT/Hashing.h"
+#include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace propeller {
 // CFGNode Id unique with a single CFG.
@@ -36,6 +39,10 @@ struct IntraCfgId {
     return bb_index == other.bb_index && clone_number == other.clone_number;
   }
   bool operator!=(const IntraCfgId& other) const { return !(*this == other); }
+  friend llvm::hash_code hash_value(const IntraCfgId& id) {
+    return llvm::hash_combine(id.bb_index, id.clone_number);
+  }
+  // TODO(b/545770511): Remove once all callers are migrated to LLVM utilities.
   template <typename H>
   friend H AbslHashValue(H h, const IntraCfgId& id) {
     return H::combine(std::move(h), id.bb_index, id.clone_number);
@@ -44,13 +51,26 @@ struct IntraCfgId {
     return std::forward_as_tuple(bb_index, clone_number) <
            std::forward_as_tuple(other.bb_index, other.clone_number);
   }
+  // TODO(b/545770511): Remove once all callers are migrated to LLVM utilities.
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const IntraCfgId& id) {
     absl::Format(&sink, "[BB index: %d, clone number: %v]", id.bb_index,
                  id.clone_number);
   }
+  template <typename Stream>
+  void print(Stream& os) const {
+    os << "[BB index: " << bb_index << ", clone number: " << clone_number
+       << "]";
+  }
+  // Overload for standard C++ streams and GoogleTest printing.
   friend std::ostream& operator<<(std::ostream& os, const IntraCfgId& id) {
-    os << absl::StreamFormat("%v", id);
+    id.print(os);
+    return os;
+  }
+  // Overload for LLVM-native stream printing (e.g., llvm::outs, llvm::dbgs).
+  friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
+                                       const IntraCfgId& id) {
+    id.print(os);
     return os;
   }
 };
@@ -72,10 +92,8 @@ struct FullIntraCfgId {
   // number if not zero. This is used to identify a basic block in the propeller
   // profile.
   std::string profile_bb_id() const {
-    std::string result = absl::StrCat(bb_id);
-    if (intra_cfg_id.clone_number != 0)
-      absl::StrAppend(&result, ".", intra_cfg_id.clone_number);
-    return result;
+    if (intra_cfg_id.clone_number == 0) return std::to_string(bb_id);
+    return llvm::formatv("{0}.{1}", bb_id, intra_cfg_id.clone_number).str();
   }
 };
 
@@ -90,6 +108,10 @@ struct InterCfgId {
            intra_cfg_id == other.intra_cfg_id;
   }
   bool operator!=(const InterCfgId& other) const { return !(*this == other); }
+  friend llvm::hash_code hash_value(const InterCfgId& id) {
+    return llvm::hash_combine(id.function_index, id.intra_cfg_id);
+  }
+  // TODO(b/545770511): Remove once all callers are migrated to LLVM utilities.
   template <typename H>
   friend H AbslHashValue(H h, const InterCfgId& id) {
     return H::combine(std::move(h), id.function_index, id.intra_cfg_id);
@@ -98,16 +120,65 @@ struct InterCfgId {
     return std::forward_as_tuple(function_index, intra_cfg_id) <
            std::forward_as_tuple(other.function_index, other.intra_cfg_id);
   }
+  // TODO(b/545770511): Remove once all callers are migrated to LLVM utilities.
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const InterCfgId& id) {
     absl::Format(&sink, "[function index: %d, %v]", id.function_index,
                  id.intra_cfg_id);
   }
+  template <typename Stream>
+  void print(Stream& os) const {
+    os << "[function index: " << function_index << ", " << intra_cfg_id << "]";
+  }
+  // Overload for standard C++ streams and GoogleTest printing.
   friend std::ostream& operator<<(std::ostream& os, const InterCfgId& id) {
-    os << absl::StreamFormat("%v", id);
+    id.print(os);
+    return os;
+  }
+  // Overload for LLVM-native stream printing (e.g., llvm::outs, llvm::dbgs).
+  friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
+                                       const InterCfgId& id) {
+    id.print(os);
     return os;
   }
 };
 
 }  // namespace propeller
+
+namespace llvm {
+template <>
+struct DenseMapInfo<propeller::IntraCfgId> {
+  static propeller::IntraCfgId getEmptyKey() {
+    return propeller::IntraCfgId{-1, -1};
+  }
+  static propeller::IntraCfgId getTombstoneKey() {
+    return propeller::IntraCfgId{-2, -2};
+  }
+  static unsigned getHashValue(const propeller::IntraCfgId& val) {
+    return static_cast<unsigned>(hash_value(val));
+  }
+  static bool isEqual(const propeller::IntraCfgId& lhs,
+                      const propeller::IntraCfgId& rhs) {
+    return lhs == rhs;
+  }
+};
+
+template <>
+struct DenseMapInfo<propeller::InterCfgId> {
+  static propeller::InterCfgId getEmptyKey() {
+    return propeller::InterCfgId{-1, {-1, -1}};
+  }
+  static propeller::InterCfgId getTombstoneKey() {
+    return propeller::InterCfgId{-2, {-2, -2}};
+  }
+  static unsigned getHashValue(const propeller::InterCfgId& val) {
+    return static_cast<unsigned>(hash_value(val));
+  }
+  static bool isEqual(const propeller::InterCfgId& lhs,
+                      const propeller::InterCfgId& rhs) {
+    return lhs == rhs;
+  }
+};
+}  // namespace llvm
+
 #endif  // PROPELLER_CFG_ID_H_
