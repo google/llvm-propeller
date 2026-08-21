@@ -21,8 +21,8 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "llvm/ADT/Twine.h"
 #include "propeller/cfg_edge_kind.h"
 
 namespace propeller {
@@ -68,7 +68,9 @@ class CFGEdge final {
 
   // Returns a string to be used as the label in the dot format.
   std::string GetDotFormatLabel() const {
-    return absl::StrCat(GetDotFormatLabelForEdgeKind(kind_), "#", weight_);
+    return (llvm::Twine(GetDotFormatLabelForEdgeKind(kind_)) + "#" +
+            llvm::Twine(weight_))
+        .str();
   }
 
   // Returns true if this edge is an intra-function branch or fallthrough that

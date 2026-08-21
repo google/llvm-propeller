@@ -28,8 +28,8 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/Twine.h"
 #include "propeller/cfg_edge.h"
 #include "propeller/cfg_edge_kind.h"
 #include "propeller/cfg_id.h"
@@ -123,9 +123,11 @@ void ControlFlowGraph::WriteDotFormat(
   }
 
   auto get_inter_node_label = [&](int function_index, int bb_id) {
-    auto label = function_index == function_index_
-                     ? absl::StrCat(bb_id)
-                     : absl::StrCat("F", "_", function_index, "_", bb_id);
+    std::string label = function_index == function_index_
+                            ? std::to_string(bb_id)
+                            : (llvm::Twine("F_") + llvm::Twine(function_index) +
+                               "_" + llvm::Twine(bb_id))
+                                  .str();
     if (node_labels.emplace(label).second) {
       os << label << " [style = \"dashed\"];\n";
     }

@@ -21,8 +21,8 @@
 #include <vector>
 
 #include "absl/functional/function_ref.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
+#include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Object/ELFTypes.h"
 #include "propeller/cfg_edge.h"
 #include "propeller/cfg_edge_kind.h"
@@ -134,11 +134,13 @@ class CFGNode final {
   }
 
   std::string GetExtendedDotFormatLabel() const {
-    return absl::StrJoin({absl::StrCat("id: ", GetDotFormatLabel()),
-                          absl::StrCat("index: ", intra_cfg_id().bb_index),
-                          absl::StrCat("freq: ", CalculateFrequency()),
-                          absl::StrCat("size: ", size_)},
-                         "\\n");
+    return llvm::join(
+        std::initializer_list<std::string>{
+            ("id: " + llvm::Twine(GetDotFormatLabel())).str(),
+            ("index: " + llvm::Twine(intra_cfg_id().bb_index)).str(),
+            ("freq: " + llvm::Twine(CalculateFrequency())).str(),
+            ("size: " + llvm::Twine(size_)).str()},
+        "\\n");
   }
 
   InterCfgId inter_cfg_id_;

@@ -26,10 +26,10 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Object/ELFTypes.h"
 #include "propeller/addr2cu.h"
 #include "propeller/bb_handle.h"
@@ -113,8 +113,10 @@ absl::StatusOr<std::unique_ptr<ProgramCfg>> ProgramCfgBuilder::Build(
   }
   if (absl::Status status = CreateEdges(branch_aggregation, node_map);
       !status.ok()) {
-    return absl::InternalError(absl::StrCat(
-        "Unable to create edges from branch profile: ", status.message()));
+    return absl::InternalError(
+        (llvm::Twine("Unable to create edges from branch profile: ") +
+         status.message())
+            .str());
   }
 
   absl::flat_hash_map<int, std::unique_ptr<ControlFlowGraph>> cfgs;

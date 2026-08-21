@@ -23,15 +23,17 @@
 
 #include "absl/algorithm/container.h"
 #include "absl/functional/function_ref.h"
-#include "absl/strings/str_cat.h"
+#include "llvm/Support/raw_ostream.h"
 #include "propeller/cfg_edge_kind.h"
 
 namespace propeller {
 
 std::string CFGNode::GetName() const {
-  std::string bb_name = absl::StrCat(function_index());
-  if (!is_entry()) absl::StrAppend(&bb_name, ".", bb_index(), ".id", bb_id());
-  if (clone_number() != 0) absl::StrAppend(&bb_name, ".c", clone_number());
+  std::string bb_name;
+  llvm::raw_string_ostream os(bb_name);
+  os << function_index();
+  if (!is_entry()) os << '.' << bb_index() << ".id" << bb_id();
+  if (clone_number() != 0) os << ".c" << clone_number();
   return bb_name;
 }
 
