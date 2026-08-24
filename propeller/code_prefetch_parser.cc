@@ -23,9 +23,10 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/Twine.h"
+#include "llvm/Support/FormatVariadic.h"
 
 namespace propeller {
 
@@ -36,13 +37,17 @@ absl::StatusOr<uint64_t> ParseAddressToUint64(absl::string_view address_str) {
   uint64_t address;
   if (address_str.starts_with("0x")) {
     if (!absl::SimpleHexAtoi(address_str, &address)) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Invalid hexadecimal address format: \"", address_str, "\""));
+      return absl::InvalidArgumentError(
+          (llvm::Twine("Invalid hexadecimal address format: \"") + address_str +
+           "\"")
+              .str());
     }
   } else {
     if (!absl::SimpleAtoi(address_str, &address)) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Invalid decimal address format: \"", address_str, "\""));
+      return absl::InvalidArgumentError(
+          (llvm::Twine("Invalid decimal address format: \"") + address_str +
+           "\"")
+              .str());
     }
   }
   return address;
@@ -59,7 +64,8 @@ absl::StatusOr<std::vector<CodePrefetchDirective>> ReadCodePrefetchDirectives(
   std::ifstream infile((std::string(prefetch_directives_path)));
   if (!infile.is_open()) {
     return absl::NotFoundError(
-        absl::StrCat("Could not open file: ", prefetch_directives_path));
+        (llvm::Twine("Could not open file: ") + prefetch_directives_path)
+            .str());
   }
 
   std::string line;
@@ -72,28 +78,33 @@ absl::StatusOr<std::vector<CodePrefetchDirective>> ReadCodePrefetchDirectives(
 
     std::vector<std::string> addresses = absl::StrSplit(line, ',');
     if (addresses.size() != 2) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Invalid format in prefetch directives file at line ", line_number,
-          ": Expected two comma-separated addresses, but got \"", line, "\""));
+      return absl::InvalidArgumentError(
+          llvm::formatv("Invalid format in prefetch directives file at line "
+                        "{0}: Expected two comma-separated addresses, but got "
+                        "\"{1}\"",
+                        line_number, line)
+              .str());
     }
 
     absl::StatusOr<uint64_t> prefetch_site = ParseAddressToUint64(addresses[0]);
     if (!prefetch_site.ok()) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Invalid prefetch site address format in prefetch directives file at "
-          "line ",
-          line_number, ": ", prefetch_site.status().message(), " in \"", line,
-          "\""));
+      return absl::InvalidArgumentError(
+          llvm::formatv(
+              "Invalid prefetch site address format in prefetch directives "
+              "file at line {0}: {1} in \"{2}\"",
+              line_number, prefetch_site.status().message(), line)
+              .str());
     }
 
     absl::StatusOr<uint64_t> prefetch_target =
         ParseAddressToUint64(addresses[1]);
     if (!prefetch_target.ok()) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Invalid prefetch target address format in prefetch directives file "
-          "at line ",
-          line_number, ": ", prefetch_target.status().message(), " in \"", line,
-          "\""));
+      return absl::InvalidArgumentError(
+          llvm::formatv(
+              "Invalid prefetch target address format in prefetch directives "
+              "file at line {0}: {1} in \"{2}\"",
+              line_number, prefetch_target.status().message(), line)
+              .str());
     }
 
     code_prefetch_directives.push_back(

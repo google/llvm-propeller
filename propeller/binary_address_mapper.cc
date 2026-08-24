@@ -33,10 +33,10 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/ELFTypes.h"
@@ -134,9 +134,9 @@ absl::flat_hash_map<int, FunctionSymbolInfo> GetSymbolInfoMapByFunctionIndex(
     auto iter =
         symbol_info_map.find(bb_addr_map[function_index].getFunctionAddress());
     if (iter == symbol_info_map.end()) {
-      LOG(WARNING) << "BB address map for function at "
-                   << absl::StrCat(absl::Hex(
-                          bb_addr_map[function_index].getFunctionAddress()))
+      LOG(WARNING) << "BB address map for function at 0x"
+                   << llvm::utohexstr(
+                          bb_addr_map[function_index].getFunctionAddress())
                    << " has no associated symbol table entry!";
       continue;
     }
@@ -679,8 +679,7 @@ void BinaryAddressMapperBuilder::FilterNoNameFunctions(
   for (auto it = selected_functions.begin(); it != selected_functions.end();) {
     if (!symbol_info_map_.contains(*it)) {
       LOG(WARNING) << "Hot function at address: 0x"
-                   << absl::StrCat(
-                          absl::Hex(bb_addr_map_[*it].getFunctionAddress()))
+                   << llvm::utohexstr(bb_addr_map_[*it].getFunctionAddress())
                    << " does not have an associated symbol name.";
       it = selected_functions.erase(it);
     } else {

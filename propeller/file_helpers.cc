@@ -22,9 +22,9 @@
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/Twine.h"
 
 namespace propeller_file {
 
@@ -32,15 +32,18 @@ absl::StatusOr<std::string> GetContents(absl::string_view path) {
   // Open the file in binary mode if it exists.
   std::ifstream filestream((std::string(path)), std::ios_base::binary);
   if (!filestream) {
-    return absl::FailedPreconditionError(absl::StrCat(
-        "Failed to open file: ", path, ". State: ", filestream.rdstate()));
+    return absl::FailedPreconditionError(
+        (llvm::Twine("Failed to open file: ") + path +
+         ". State: " + llvm::Twine(filestream.rdstate()))
+            .str());
   }
 
   // Buffer the read into a string stream.
   std::ostringstream stringstream;
   stringstream << filestream.rdbuf();
   if (!filestream || !stringstream) {
-    return absl::UnknownError(absl::StrCat("Error during read: ", path));
+    return absl::UnknownError(
+        (llvm::Twine("Error during read: ") + path).str());
   }
 
   return stringstream.str();
@@ -49,13 +52,16 @@ absl::StatusOr<std::string> GetContents(absl::string_view path) {
 absl::Status SetContents(absl::string_view path, absl::string_view contents) {
   std::ofstream filestream((std::string(path)), std::ios_base::binary);
   if (!filestream) {
-    return absl::FailedPreconditionError(absl::StrCat(
-        "Failed to open file: ", path, ". State: ", filestream.rdstate()));
+    return absl::FailedPreconditionError(
+        (llvm::Twine("Failed to open file: ") + path +
+         ". State: " + llvm::Twine(filestream.rdstate()))
+            .str());
   }
 
   filestream << contents;
   if (filestream.fail() || filestream.bad()) {
-    return absl::UnknownError(absl::StrCat("Failed to write to file: ", path));
+    return absl::UnknownError(
+        (llvm::Twine("Failed to write to file: ") + path).str());
   }
   return absl::OkStatus();
 }
@@ -66,8 +72,10 @@ absl::StatusOr<std::string> GetContentsIgnoringLines(
   // Open the file in binary mode if it exists.
   std::ifstream filestream((std::string(path)), std::ios_base::binary);
   if (!filestream) {
-    return absl::FailedPreconditionError(absl::StrCat(
-        "Failed to open file: ", path, ". State: ", filestream.rdstate()));
+    return absl::FailedPreconditionError(
+        (llvm::Twine("Failed to open file: ") + path +
+         ". State: " + llvm::Twine(filestream.rdstate()))
+            .str());
   }
 
   std::string contents;
@@ -79,11 +87,11 @@ absl::StatusOr<std::string> GetContentsIgnoringLines(
                        })) {
       continue;
     }
-    absl::StrAppend(&contents, line);
+    contents += line;
     // If a newline was encountered (eof was not reached), add a newline to the
     // output.
     if (filestream.eof()) return contents;
-    absl::StrAppend(&contents, "\n");
+    contents += '\n';
   }
   return contents;
 }

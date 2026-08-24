@@ -20,9 +20,9 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/Twine.h"
 
 namespace propeller_file {
 
@@ -46,14 +46,16 @@ template <typename T>
 absl::StatusOr<T> GetBinaryProto(absl::string_view path) {
   std::ifstream filestream((std::string(path)));
   if (!filestream) {
-    return absl::FailedPreconditionError(absl::StrCat(
-        "Failed to open file: ", path, ". State: ", filestream.rdstate()));
+    return absl::FailedPreconditionError(
+        (llvm::Twine("Failed to open file: ") + path +
+         ". State: " + llvm::Twine(filestream.rdstate()))
+            .str());
   }
 
   T proto;
   if (!proto.ParseFromIstream(&filestream)) {
     return absl::FailedPreconditionError(
-        absl::StrCat("Failed to parse proto from ", path));
+        (llvm::Twine("Failed to parse proto from ") + path).str());
   }
   return proto;
 }

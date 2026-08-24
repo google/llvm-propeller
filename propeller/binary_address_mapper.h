@@ -26,13 +26,14 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Object/ELFTypes.h"
 #include "propeller/bb_handle.h"
 #include "propeller/binary_address_branch_path.h"
@@ -255,12 +256,14 @@ class BinaryAddressMapper {
     const auto& aliases = symbol_info_map_.at(bb_handle.function_index).aliases;
     std::string func_name =
         aliases.empty()
-            ? absl::StrCat(
-                  "0x",
-                  absl::Hex(GetFunctionEntry(bb_handle).getFunctionAddress()))
+            ? (llvm::Twine("0x") +
+               llvm::utohexstr(
+                   GetFunctionEntry(bb_handle).getFunctionAddress()))
+                  .str()
             : aliases.front().str();
-    return absl::StrCat(func_name, ":", bb_handle.range_index, ":",
-                        bb_handle.bb_index);
+    return (llvm::Twine(func_name) + ":" + llvm::Twine(bb_handle.range_index) +
+            ":" + llvm::Twine(bb_handle.bb_index))
+        .str();
   }
 
   // Returns whether a branch to `to_bb_handle` landing at address `to_address`

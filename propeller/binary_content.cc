@@ -29,12 +29,13 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
 #include "llvm/Object/ELF.h"
@@ -179,8 +180,10 @@ absl::Status ELFFileUtil<ELFT>::ReadLoadableSegments(
   }
   auto program_headers = elf_file_->program_headers();
   if (!program_headers) {
-    return absl::FailedPreconditionError(absl::StrCat(
-        binary_content.file_name, " does not have program headers"));
+    return absl::FailedPreconditionError(
+        (llvm::Twine(binary_content.file_name) +
+         " does not have program headers")
+            .str());
   }
 
   for (const typename ELFT::Phdr& phdr : *program_headers) {
@@ -193,8 +196,9 @@ absl::Status ELFFileUtil<ELFT>::ReadLoadableSegments(
   }
   if (binary_content.segments.empty()) {
     return absl::FailedPreconditionError(
-        absl::StrCat("No loadable and executable segments found in '",
-                     binary_content.file_name, "'"));
+        (llvm::Twine("No loadable and executable segments found in '") +
+         binary_content.file_name + "'")
+            .str());
   }
   return absl::OkStatus();
 }
@@ -206,17 +210,17 @@ absl::StatusOr<const typename ELFT::Shdr*> ELFFileUtil<ELFT>::FindSection(
       elf_file_->sections();
   if (!sections) {
     return absl::FailedPreconditionError(
-        absl::StrCat("Failed to get sections from the ELF file: ",
-                     llvm::toString(sections.takeError())));
+        (llvm::Twine("Failed to get sections from the ELF file: ") +
+         llvm::toString(sections.takeError()))
+            .str());
   }
   for (const typename ELFT::Shdr& shdr : *sections) {
     llvm::Expected<llvm::StringRef> sn = elf_file_->getSectionName(shdr);
     if (!sn) continue;
     if (*sn == section_name) return &shdr;
   }
-  return absl::NotFoundError(absl::StrCat(
-      "Section not found: ",
-      absl::string_view(section_name.data(), section_name.size())));
+  return absl::NotFoundError(
+      (llvm::Twine("Section not found: ") + section_name).str());
 }
 
 template <class ELFT>
@@ -301,9 +305,9 @@ ReadSymbolTable(const BinaryContent& binary_content) {
       uint64_t sym_size = llvm::object::ELFSymbolRef(sym_ref).getSize();
       if (func_size != sym_size) {
         LOG(WARNING) << "Multiple function symbols on the same address with "
-                        "different size: "
-                     << absl::StrCat(absl::Hex(*address)) << ": '"
-                     << func_name->str() << "(" << func_size << ")' and '"
+                        "different size: 0x"
+                     << llvm::utohexstr(*address) << ": '" << func_name->str()
+                     << "(" << func_size << ")' and '"
                      << llvm::cantFail(sym_ref.getName()).str() << "("
                      << sym_size << ")', the former will be dropped.";
         check_size_ok = false;
@@ -458,9 +462,10 @@ absl::StatusOr<std::unique_ptr<BinaryContent>> GetBinaryContent(
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> file =
       llvm::MemoryBuffer::getFile(binary_file_name);
   if (!file) {
-    return absl::FailedPreconditionError(
-        absl::StrCat("Failed to read file '", binary_file_name,
-                     "': ", file.getError().message()));
+    return absl::FailedPreconditionError((llvm::Twine("Failed to read file '") +
+                                          binary_file_name +
+                                          "': " + file.getError().message())
+                                             .str());
   }
   llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>> obj =
       llvm::object::ObjectFile::createELFObjectFile(
@@ -470,21 +475,24 @@ absl::StatusOr<std::unique_ptr<BinaryContent>> GetBinaryContent(
     llvm::raw_string_ostream raw_string_ostream(error_message);
     raw_string_ostream << obj.takeError();
     return absl::FailedPreconditionError(
-        absl::StrCat("Not a valid ELF file '", binary_file_name,
-                     "': ", raw_string_ostream.str()));
+        (llvm::Twine("Not a valid ELF file '") + binary_file_name +
+         "': " + raw_string_ostream.str())
+            .str());
   }
   llvm::object::ELFObjectFileBase* elf_obj =
       llvm::dyn_cast<llvm::object::ELFObjectFileBase, llvm::object::ObjectFile>(
           (*obj).get());
   if (!elf_obj) {
     return absl::FailedPreconditionError(
-        absl::StrCat("Not a valid ELF file '", binary_file_name, "."));
+        (llvm::Twine("Not a valid ELF file '") + binary_file_name + "'.")
+            .str());
   }
   binary_content->file_name = binary_file_name;
   binary_content->file_content = std::move(*file);
   binary_content->object_file = std::move(*obj);
 
-  std::string dwp_file = absl::StrCat(binary_content->file_name, ".dwp");
+  std::string dwp_file =
+      (llvm::Twine(binary_content->file_name) + ".dwp").str();
   if (!llvm::sys::fs::exists(dwp_file)) dwp_file = "";
   binary_content->dwp_file_name = dwp_file;
   absl::StatusOr<std::unique_ptr<llvm::DWARFContext>> dwarf_context =
@@ -547,7 +555,7 @@ absl::StatusOr<int64_t> GetSymbolAddress(
     }
     return *symbol_address;
   }
-  return absl::NotFoundError(absl::StrCat(symbol_name, " not found"));
+  return absl::NotFoundError((llvm::Twine(symbol_name) + " not found").str());
 }
 
 }  // namespace propeller
