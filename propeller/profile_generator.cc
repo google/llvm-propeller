@@ -140,14 +140,13 @@ absl::StatusOr<std::unique_ptr<BranchAggregator>> CreateBranchAggregator(
 }
 
 // Creates a path profile aggregator for the provided profile type.
-absl::StatusOr<std::unique_ptr<PathProfileAggregator>>
-CreatePathProfileAggregator(ProfileType profile_type,
-                            const PropellerOptions& opts) {
+std::unique_ptr<PathProfileAggregator> CreatePathProfileAggregator(
+    ProfileType profile_type, const PropellerOptions& opts) {
   if (!opts.path_profile_options().enable_cloning()) return nullptr;
 
+  // Path profiles are only supported for PERF_LBR profiles.
   if (profile_type != ProfileType::PERF_LBR) {
-    return absl::FailedPreconditionError(
-        "Cloning is only supported for PERF_LBR profiles");
+    return nullptr;
   }
   return std::make_unique<PerfDataPathProfileAggregator>(
       opts, CreatePerfDataProvider(opts));
@@ -183,8 +182,7 @@ absl::Status GeneratePropellerProfiles(const PropellerOptions& opts) {
     ASSIGN_OR_RETURN(
         branch_aggregator,
         CreateBranchAggregator(*profile_type, opts, *binary_content));
-    ASSIGN_OR_RETURN(path_profile_aggregator,
-                     CreatePathProfileAggregator(*profile_type, opts));
+    path_profile_aggregator = CreatePathProfileAggregator(*profile_type, opts);
   }
   return GeneratePropellerProfiles(opts, std::move(binary_content),
                                    std::move(branch_aggregator),

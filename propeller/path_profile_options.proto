@@ -32,7 +32,7 @@ message PathProfileOptions {
   // nondecreasing order of their sample time.
   int32 max_time_diff_in_path_buffer_millis = 7 [default = 1000];
 
-  bool enable_cloning = 9 [default = false];
+  bool enable_cloning = 9 [default = true];
 
   // Base penalty factor for cloning.
   double base_penalty_factor = 11 [default = 1.0];
