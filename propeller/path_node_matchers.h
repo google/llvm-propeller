@@ -19,6 +19,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "gmock/gmock.h"
+#include "llvm/ADT/Twine.h"
 #include "propeller/bb_handle.h"
 #include "propeller/path_node.h"
 #include "propeller/status_testing_macros.h"
@@ -34,37 +35,38 @@ using ::testing::Pointer;
 using ::testing::Property;
 using ::testing::UnorderedElementsAre;
 
-MATCHER_P2(
-    PathPredInfoIs, entries_matcher, missing_pred_entry_matcher,
-    absl::StrCat(" is a path predecessor info that ",
-                 (negation ? " doesn't have" : " has"), " entries that ",
-                 DescribeMatcher<absl::flat_hash_map<int, PathPredInfoEntry>>(
-                     entries_matcher, negation),
-                 (negation ? " or doesn't have" : " and has"),
-                 " missing predecessor entry that ",
-                 DescribeMatcher<PathPredInfoEntry>(missing_pred_entry_matcher,
-                                                    negation))) {
+MATCHER_P2(PathPredInfoIs, entries_matcher, missing_pred_entry_matcher,
+           (llvm::Twine(" is a path predecessor info that ") +
+            (negation ? " doesn't have" : " has") + " entries that " +
+            DescribeMatcher<absl::flat_hash_map<int, PathPredInfoEntry>>(
+                entries_matcher, negation) +
+            (negation ? " or doesn't have" : " and has") +
+            " missing predecessor entry that " +
+            DescribeMatcher<PathPredInfoEntry>(missing_pred_entry_matcher,
+                                               negation))
+               .str()) {
   return ExplainMatchResult(entries_matcher, arg.entries, result_listener) &&
          ExplainMatchResult(missing_pred_entry_matcher, arg.missing_pred_entry,
                             result_listener);
 }
 
-MATCHER_P4(
-    PathPredInfoEntryIs, frequency_matcher, cache_pressure_matcher,
-    call_freqs_matcher, return_to_freqs_matcher,
-    absl::StrCat(
-        "is a path predecessor info entry that",
-        (negation ? " doesn't have" : " has"), " frequency that ",
-        DescribeMatcher<int>(frequency_matcher, negation),
-        (negation ? " or doesn't have" : " and has"), " cache pressure that ",
-        DescribeMatcher<double>(cache_pressure_matcher, negation),
-        (negation ? " or doesn't have" : " and has"), " call frequencies that ",
-        DescribeMatcher<absl::flat_hash_map<propeller::CallRetInfo, int>>(
-            call_freqs_matcher, negation),
-        (negation ? " or doesn't have" : " and has"),
-        " return to frequencies that ",
-        DescribeMatcher<absl::flat_hash_map<propeller::FlatBbHandle, int>>(
-            return_to_freqs_matcher, negation))) {
+MATCHER_P4(PathPredInfoEntryIs, frequency_matcher, cache_pressure_matcher,
+           call_freqs_matcher, return_to_freqs_matcher,
+           (llvm::Twine("is a path predecessor info entry that") +
+            (negation ? " doesn't have" : " has") + " frequency that " +
+            DescribeMatcher<int>(frequency_matcher, negation) +
+            (negation ? " or doesn't have" : " and has") +
+            " cache pressure that " +
+            DescribeMatcher<double>(cache_pressure_matcher, negation) +
+            (negation ? " or doesn't have" : " and has") +
+            " call frequencies that " +
+            DescribeMatcher<absl::flat_hash_map<propeller::CallRetInfo, int>>(
+                call_freqs_matcher, negation) +
+            (negation ? " or doesn't have" : " and has") +
+            " return to frequencies that " +
+            DescribeMatcher<absl::flat_hash_map<propeller::FlatBbHandle, int>>(
+                return_to_freqs_matcher, negation))
+               .str()) {
   return ExplainMatchResult(frequency_matcher, arg.freq, result_listener) &&
          ExplainMatchResult(cache_pressure_matcher, arg.cache_pressure,
                             result_listener) &&
@@ -79,24 +81,24 @@ inline auto PathPredInfoEntryIsEmpty() {
                              testing::IsEmpty());
 }
 
-MATCHER_P4(
-    PathNodeIs, node_bb_index_matcher, path_length_matcher,
-    path_pred_info_matcher, children_matcher,
-    absl::StrCat(
-        "is a path node that", (negation ? " doesn't have" : " has"),
-        " bb_index that ",
-        DescribeMatcher<int>(node_bb_index_matcher, negation),
-        (negation ? " or doesn't have" : " and has"), " path length that ",
-        DescribeMatcher<int>(path_length_matcher, negation),
-        (negation ? " or doesn't have" : " and has"),
-        " path predecessor info that ",
-        DescribeMatcher<PathPredInfo>(path_pred_info_matcher, negation),
-        (negation ? " or doesn't have" : " and has"), " branches that ",
-        DescribeMatcher<
-            absl::flat_hash_map<int, std::unique_ptr<propeller::PathNode>>>(
-            children_matcher, negation),
-        (negation ? " or doesn't have" : " and has"),
-        " children whose parent points to this node")) {
+MATCHER_P4(PathNodeIs, node_bb_index_matcher, path_length_matcher,
+           path_pred_info_matcher, children_matcher,
+           (llvm::Twine("is a path node that") +
+            (negation ? " doesn't have" : " has") + " bb_index that " +
+            DescribeMatcher<int>(node_bb_index_matcher, negation) +
+            (negation ? " or doesn't have" : " and has") +
+            " path length that " +
+            DescribeMatcher<int>(path_length_matcher, negation) +
+            (negation ? " or doesn't have" : " and has") +
+            " path predecessor info that " +
+            DescribeMatcher<PathPredInfo>(path_pred_info_matcher, negation) +
+            (negation ? " or doesn't have" : " and has") + " branches that " +
+            DescribeMatcher<
+                absl::flat_hash_map<int, std::unique_ptr<propeller::PathNode>>>(
+                children_matcher, negation) +
+            (negation ? " or doesn't have" : " and has") +
+            " children whose parent points to this node")
+               .str()) {
   return ExplainMatchResult(node_bb_index_matcher, arg->node_bb_index(),
                             result_listener) &&
          ExplainMatchResult(path_length_matcher, arg->path_length(),
@@ -113,17 +115,17 @@ MATCHER_P4(
              arg->children(), result_listener);
 }
 
-MATCHER_P2(
-    FunctionPathProfileIs, function_index_matcher,
-    path_trees_by_root_bb_index_matcher,
-    absl::StrCat(
-        "is a function path profile that",
-        (negation ? " doesn't have" : " has"), " function index that ",
-        DescribeMatcher<int>(function_index_matcher, negation),
-        (negation ? " or doesn't have" : " and has"), " path length that ",
-        DescribeMatcher<
-            absl::flat_hash_map<int, std::unique_ptr<propeller::PathNode>>>(
-            path_trees_by_root_bb_index_matcher, negation))) {
+MATCHER_P2(FunctionPathProfileIs, function_index_matcher,
+           path_trees_by_root_bb_index_matcher,
+           (llvm::Twine("is a function path profile that") +
+            (negation ? " doesn't have" : " has") + " function index that " +
+            DescribeMatcher<int>(function_index_matcher, negation) +
+            (negation ? " or doesn't have" : " and has") +
+            " path length that " +
+            DescribeMatcher<
+                absl::flat_hash_map<int, std::unique_ptr<propeller::PathNode>>>(
+                path_trees_by_root_bb_index_matcher, negation))
+               .str()) {
   return ExplainMatchResult(function_index_matcher, arg.function_index(),
                             result_listener) &&
          ExplainMatchResult(path_trees_by_root_bb_index_matcher,

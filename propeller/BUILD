@@ -799,6 +799,7 @@ cc_library(
         ":path_node",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1548,6 +1549,7 @@ cc_test(
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1681,6 +1683,7 @@ cc_test(
         "@abseil-cpp//absl/status:status_matchers",
         "@abseil-cpp//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
 

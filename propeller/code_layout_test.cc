@@ -28,11 +28,11 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/Twine.h"
 #include "propeller/cfg.h"
 #include "propeller/cfg_edge.h"
 #include "propeller/cfg_edge_kind.h"
@@ -80,16 +80,17 @@ constexpr double kEpsilon = 0.001;
 MATCHER_P(ChainIdIs, chain_id, "") { return arg->id() == chain_id; }
 
 MATCHER_P(HasIntraChainEdges, intra_chain_out_edges_matcher,
-          absl::StrCat(negation ? "doesn't have" : "has",
-                       " intra_chain_out_edges_ that ",
-                       DescribeMatcher<std::vector<CFGEdge*>>(
-                           intra_chain_out_edges_matcher, negation))) {
+          (llvm::Twine(negation ? "doesn't have" : "has") +
+           " intra_chain_out_edges_ that " +
+           DescribeMatcher<std::vector<CFGEdge*>>(intra_chain_out_edges_matcher,
+                                                  negation))
+              .str()) {
   return ExplainMatchResult(intra_chain_out_edges_matcher,
                             arg.intra_chain_out_edges(), result_listener);
 }
 
 std::string GetTestInputPath(absl::string_view testdata_path) {
-  return absl::StrCat(::testing::SrcDir(), testdata_path);
+  return (llvm::Twine(::testing::SrcDir()) + testdata_path).str();
 }
 
 // Helper method to capture the node ordinals in a chain/cluster and place them

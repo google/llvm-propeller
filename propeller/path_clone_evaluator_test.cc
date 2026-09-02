@@ -27,6 +27,7 @@
 #include "absl/types/span.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/Twine.h"
 #include "propeller/bb_handle.h"
 #include "propeller/cfg.h"
 #include "propeller/cfg_edge_kind.h"
@@ -129,16 +130,15 @@ MATCHER_P3(PathCloningIs, function_index, path_pred_bb_index, full_path, "") {
 
 MATCHER_P3(EvaluatedPathCloningIs, path_cloning_matcher, score_matcher,
            cfg_change_matcher,
-           absl::StrCat(
-               "is an evaluated path cloning that ",
-               (negation ? " doesn't have" : " has"), " path cloning that ",
-               DescribeMatcher<PathCloning>(path_cloning_matcher, negation),
-               (negation ? " or doesn't have" : " and has"), " score that ",
-               DescribeMatcher<std::optional<double>>(score_matcher, negation),
-               (negation ? " or doesn't have" : " and has"),
-               " cfg change that ",
-               DescribeMatcher<CfgChangeFromPathCloning>(cfg_change_matcher,
-                                                         negation))) {
+           (llvm::Twine("is an evaluated path cloning that ") +
+            (negation ? " doesn't have" : " has") + " path cloning that " +
+            DescribeMatcher<PathCloning>(path_cloning_matcher, negation) +
+            (negation ? " or doesn't have" : " and has") + " score that " +
+            DescribeMatcher<std::optional<double>>(score_matcher, negation) +
+            (negation ? " or doesn't have" : " and has") + " cfg change that " +
+            DescribeMatcher<CfgChangeFromPathCloning>(cfg_change_matcher,
+                                                      negation))
+               .str()) {
   return ExplainMatchResult(path_cloning_matcher, arg.path_cloning,
                             result_listener) &&
          ExplainMatchResult(score_matcher, arg.score, result_listener) &&
@@ -150,26 +150,25 @@ MATCHER_P5(
     CfgChangeIs, path_pred_bb_index_matcher, path_to_clone_matcher,
     paths_to_drop_matcher, intra_edge_reroutes_matcher,
     inter_edge_reroutes_matcher,
-    absl::StrCat(
-        "is a CfgChangeFromPathCloning that ",
-        (negation ? " doesn't have" : " has"), " path_pred_bb_index that ",
-        DescribeMatcher<int>(path_pred_bb_index_matcher, negation),
-        (negation ? " or doesn't have" : " and has"), " path_to_clone that ",
-        DescribeMatcher<const std::vector<int>&>(path_to_clone_matcher,
-                                                 negation),
-        (negation ? " or doesn't have" : " and has"), " paths_to_drop that ",
-        DescribeMatcher<const absl::flat_hash_set<const PathNode*>&>(
-            paths_to_drop_matcher, negation),
-        (negation ? " or doesn't have" : " and has"),
-        " intra_edge_reroutes that ",
-        DescribeMatcher<
-            const std::vector<CfgChangeFromPathCloning::IntraEdgeReroute>&>(
-            intra_edge_reroutes_matcher, negation),
-        (negation ? " or doesn't have" : " and has"),
-        " inter_edge_reroutes that ",
-        DescribeMatcher<
-            const std::vector<CfgChangeFromPathCloning::InterEdgeReroute>&>(
-            inter_edge_reroutes_matcher, negation))) {
+    (llvm::Twine("is a CfgChangeFromPathCloning that ") +
+     (negation ? " doesn't have" : " has") + " path_pred_bb_index that " +
+     DescribeMatcher<int>(path_pred_bb_index_matcher, negation) +
+     (negation ? " or doesn't have" : " and has") + " path_to_clone that " +
+     DescribeMatcher<const std::vector<int>&>(path_to_clone_matcher, negation) +
+     (negation ? " or doesn't have" : " and has") + " paths_to_drop that " +
+     DescribeMatcher<const absl::flat_hash_set<const PathNode*>&>(
+         paths_to_drop_matcher, negation) +
+     (negation ? " or doesn't have" : " and has") +
+     " intra_edge_reroutes that " +
+     DescribeMatcher<
+         const std::vector<CfgChangeFromPathCloning::IntraEdgeReroute>&>(
+         intra_edge_reroutes_matcher, negation) +
+     (negation ? " or doesn't have" : " and has") +
+     " inter_edge_reroutes that " +
+     DescribeMatcher<
+         const std::vector<CfgChangeFromPathCloning::InterEdgeReroute>&>(
+         inter_edge_reroutes_matcher, negation))
+        .str()) {
   return ExplainMatchResult(path_pred_bb_index_matcher, arg.path_pred_bb_index,
                             result_listener) &&
          ExplainMatchResult(path_to_clone_matcher, arg.path_to_clone,
