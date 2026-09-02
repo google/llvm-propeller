@@ -18,10 +18,10 @@
 
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/Twine.h"
 #include "propeller/status_testing_macros.h"
 
 namespace propeller {
@@ -37,8 +37,9 @@ MATCHER_P2(CodePrefetchDirectiveEq, site, target, "") {
 }
 
 std::string GetTestDataPath(absl::string_view filename) {
-  return absl::StrCat(::testing::SrcDir(),
-                      "_main/propeller/testdata/prefetch_parsing/", filename);
+  return (llvm::Twine(::testing::SrcDir()) +
+          "_main/propeller/testdata/prefetch_parsing/" + filename)
+      .str();
 }
 
 TEST(CodePrefetchParserTest, EmptyPath) {

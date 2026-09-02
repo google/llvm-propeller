@@ -24,10 +24,10 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/Twine.h"
 #include "propeller/bb_addr_map.pb.h"
 #include "propeller/file_helpers.h"
 #include "propeller/file_perf_data_provider.h"
@@ -41,7 +41,7 @@ namespace {
 using ::propeller_testing::ParseTextProtoOrDie;
 
 std::string GetPropellerTestDataDirectoryPath() {
-  return absl::StrCat(::testing::SrcDir(), "_main/propeller/testdata/");
+  return (llvm::Twine(::testing::SrcDir()) + "_main/propeller/testdata/").str();
 }
 
 using ::absl_testing::IsOk;
@@ -80,53 +80,57 @@ PropellerOptions GetOptionsWithPrefetchPath(absl::string_view prefetch_path) {
 
 TEST(GeneratePropellerProfiles, UsesPassedProvider) {
   PropellerOptions options;
-  options.set_binary_name(absl::StrCat(::testing::SrcDir(),
-                                       "_main/propeller/testdata/"
-                                       "sample.bin"));
-  options.set_cluster_out_name(absl::StrCat(
-      ::testing::TempDir(),
-      "/LlvmPropellerProfileGeneratorTest_UsesPassedProvider_cc_profile.txt"));
-  options.set_symbol_order_out_name(absl::StrCat(
-      ::testing::TempDir(),
-      "/LlvmPropellerProfileGeneratorTest_UsesPassedProvider_ld_profile.txt"));
+  options.set_binary_name((llvm::Twine(::testing::SrcDir()) +
+                           "_main/propeller/testdata/"
+                           "sample.bin")
+                              .str());
+  options.set_cluster_out_name(
+      (llvm::Twine(::testing::TempDir()) +
+       "/LlvmPropellerProfileGeneratorTest_UsesPassedProvider_cc_profile.txt")
+          .str());
+  options.set_symbol_order_out_name(
+      (llvm::Twine(::testing::TempDir()) +
+       "/LlvmPropellerProfileGeneratorTest_UsesPassedProvider_ld_profile.txt")
+          .str());
 
   // The provider will fail, because the file does not exist, so
   // `GeneratePropellerProfiles` should fail.
   EXPECT_THAT(
       GeneratePropellerProfiles(
           options, std::make_unique<GenericFilePerfDataProvider>(
-                       std::vector<std::string>{absl::StrCat(
-                           ::testing::SrcDir(),
-                           "/google3/devtools/crosstool/autofdo/testdata/"
-                           "this_file_does_not_exist.perfdata")})),
+                       std::vector<std::string>{
+                           (llvm::Twine(::testing::SrcDir()) +
+                            "/google3/devtools/crosstool/autofdo/testdata/"
+                            "this_file_does_not_exist.perfdata")
+                               .str()})),
       Not(IsOk()));
 }
 
 TEST(GeneratePropellerProfiles, GenerateProfileWithBBHash) {
   PropellerOptions options;
-  options.set_binary_name(absl::StrCat(GetPropellerTestDataDirectoryPath(),
-                                       "sample_with_bb_hash.bin"));
+  options.set_binary_name(GetPropellerTestDataDirectoryPath() +
+                          "sample_with_bb_hash.bin");
   std::string cc_directives_path =
-      absl::StrCat(::testing::TempDir(), "/cc_directives.txt");
+      (llvm::Twine(::testing::TempDir()) + "/cc_directives.txt").str();
   options.set_cluster_out_name(cc_directives_path);
   std::string ld_directives_path =
-      absl::StrCat(::testing::TempDir(), "/ld_directives.txt");
+      (llvm::Twine(::testing::TempDir()) + "/ld_directives.txt").str();
   options.set_symbol_order_out_name(ld_directives_path);
   options.set_write_bb_hash(true);
 
   absl::Status status = GeneratePropellerProfiles(
       options,
-      std::make_unique<GenericFilePerfDataProvider>(std::vector<std::string>{
-          absl::StrCat(GetPropellerTestDataDirectoryPath(),
-                       "sample_with_bb_hash.perfdata")}));
+      std::make_unique<GenericFilePerfDataProvider>(
+          std::vector<std::string>{GetPropellerTestDataDirectoryPath() +
+                                   "sample_with_bb_hash.perfdata"}));
 
   // The provider will success, because the file exists.
   EXPECT_THAT(status, IsOk());
 
-  ASSERT_OK_AND_ASSIGN(std::string expected_cc_profile,
-                       GetContents(absl::StrCat(
-                           GetPropellerTestDataDirectoryPath(),
-                           "sample_with_bb_hash_cc_directives.golden.txt")));
+  ASSERT_OK_AND_ASSIGN(
+      std::string expected_cc_profile,
+      GetContents(GetPropellerTestDataDirectoryPath() +
+                  "sample_with_bb_hash_cc_directives.golden.txt"));
   EXPECT_THAT(GetContents(cc_directives_path),
               IsOkAndHolds(Eq(expected_cc_profile)));
 }

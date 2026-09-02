@@ -18,9 +18,9 @@
 #include <string>
 
 #include "absl/algorithm/container.h"
-#include "absl/strings/str_cat.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/Twine.h"
 #include "propeller/cfg.h"
 #include "propeller/cfg_edge.h"
 #include "propeller/cfg_edge_kind.h"
@@ -42,8 +42,9 @@ using ::testing::UnorderedElementsAre;
 // correctly.
 TEST(ProgramCfg, CreateCfgInfoFromProto) {
   const std::string protobuf_input =
-      absl::StrCat(::testing::SrcDir(),
-                   "_main/propeller/testdata/propeller_sample.protobuf");
+      (llvm::Twine(::testing::SrcDir()) +
+       "_main/propeller/testdata/propeller_sample.protobuf")
+          .str();
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
                        BuildFromCfgProtoPath(protobuf_input));

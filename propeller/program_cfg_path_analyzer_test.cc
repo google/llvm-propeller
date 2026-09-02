@@ -21,11 +21,11 @@
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/Twine.h"
 #include "propeller/bb_handle.h"
 #include "propeller/binary_address_mapper.h"
 #include "propeller/cfg_edge_kind.h"
@@ -693,8 +693,9 @@ TEST_P(TreePathLengthTest, LimitsPathLength) {
 INSTANTIATE_TEST_SUITE_P(ProgramCfgPathAnalyzer, TreePathLengthTest,
                          testing::Values(2, 3, 4),
                          [](const testing::TestParamInfo<int>& param_info) {
-                           return absl::StrCat("MaxPathLength",
-                                               param_info.param);
+                           return (llvm::Twine("MaxPathLength") +
+                                   llvm::Twine(param_info.param))
+                               .str();
                          });
 
 TEST(ProgramCfgPathAnalyzer, TracksMissingPathPredecessorInfo) {

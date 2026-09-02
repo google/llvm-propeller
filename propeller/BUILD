@@ -1098,6 +1098,7 @@ cc_test(
         "@abseil-cpp//absl/status:status_matchers",
         "@abseil-cpp//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1248,6 +1249,7 @@ cc_test(
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1357,6 +1359,7 @@ cc_test(
         "@abseil-cpp//absl/status:status_matchers",
         "@abseil-cpp//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1395,6 +1398,7 @@ cc_test(
         "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1645,6 +1649,7 @@ cc_test(
         "@abseil-cpp//absl/time",
         "@abseil-cpp//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1739,6 +1744,7 @@ cc_test(
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1789,5 +1795,6 @@ cc_test(
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
