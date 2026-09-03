@@ -25,11 +25,11 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Error.h"
@@ -65,8 +65,10 @@ absl::StatusOr<BinaryData> SetupBinaryData(absl::string_view binary) {
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> mem_buf =
       llvm::MemoryBuffer::getFile(binary);
   if (!mem_buf) {
-    return absl::FailedPreconditionError(absl::StrCat(
-        "failed creating MemoryBuffer: %s", mem_buf.getError().message()));
+    return absl::FailedPreconditionError(
+        (llvm::Twine("failed creating MemoryBuffer: ") +
+         mem_buf.getError().message())
+            .str());
   }
 
   llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>> object_file =
@@ -82,12 +84,14 @@ absl::StatusOr<BinaryData> SetupBinaryData(absl::string_view binary) {
 }
 
 TEST(Addr2CuTest, ComdatFunc) {
-  const std::string binary = absl::StrCat(::testing::SrcDir(),
-                                          "_main/propeller/testdata/"
-                                          "test_comdat.bin");
-  const std::string symmap = absl::StrCat(::testing::SrcDir(),
-                                          "_main/propeller/testdata/"
-                                          "test_comdat.symmap");
+  const std::string binary = (llvm::Twine(::testing::SrcDir()) +
+                              "_main/propeller/testdata/"
+                              "test_comdat.bin")
+                                 .str();
+  const std::string symmap = (llvm::Twine(::testing::SrcDir()) +
+                              "_main/propeller/testdata/"
+                              "test_comdat.symmap")
+                                 .str();
 
   ASSERT_OK_AND_ASSIGN(BinaryData binary_data, SetupBinaryData(binary));
 
@@ -100,9 +104,10 @@ TEST(Addr2CuTest, ComdatFunc) {
 }
 
 TEST(Addr2CuTest, ComdatFuncHasNoDwp) {
-  const std::string binary = absl::StrCat(::testing::SrcDir(),
-                                          "_main/propeller/testdata/"
-                                          "test_comdat_with_dwp.bin");
+  const std::string binary = (llvm::Twine(::testing::SrcDir()) +
+                              "_main/propeller/testdata/"
+                              "test_comdat_with_dwp.bin")
+                                 .str();
 
   ASSERT_OK_AND_ASSIGN(BinaryData binary_data, SetupBinaryData(binary));
 
@@ -112,15 +117,18 @@ TEST(Addr2CuTest, ComdatFuncHasNoDwp) {
 }
 
 TEST(Addr2CuTest, ComdatFuncHasDwp) {
-  const std::string binary = absl::StrCat(::testing::SrcDir(),
-                                          "_main/propeller/testdata/"
-                                          "test_comdat_with_dwp.bin");
-  const std::string symmap = absl::StrCat(::testing::SrcDir(),
-                                          "_main/propeller/testdata/"
-                                          "test_comdat_with_dwp.symmap");
-  const std::string dwp = absl::StrCat(::testing::SrcDir(),
-                                       "_main/propeller/testdata/"
-                                       "test_comdat_with_dwp.dwp");
+  const std::string binary = (llvm::Twine(::testing::SrcDir()) +
+                              "_main/propeller/testdata/"
+                              "test_comdat_with_dwp.bin")
+                                 .str();
+  const std::string symmap = (llvm::Twine(::testing::SrcDir()) +
+                              "_main/propeller/testdata/"
+                              "test_comdat_with_dwp.symmap")
+                                 .str();
+  const std::string dwp = (llvm::Twine(::testing::SrcDir()) +
+                           "_main/propeller/testdata/"
+                           "test_comdat_with_dwp.dwp")
+                              .str();
 
   ASSERT_OK_AND_ASSIGN(BinaryData binary_data, SetupBinaryData(binary));
 

@@ -1346,6 +1346,7 @@ cc_test(
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1611,6 +1612,7 @@ cc_test(
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1628,6 +1630,7 @@ cc_test(
         "@abseil-cpp//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:MC",
+        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:X86UtilsAndDesc",
     ],
 )

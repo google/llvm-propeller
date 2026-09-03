@@ -22,10 +22,10 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/Twine.h"
 #include "propeller/status_testing_macros.h"
 
 namespace propeller {
@@ -45,8 +45,9 @@ using ::testing::SizeIs;
 constexpr absl::string_view kTestDataDir = "_main/propeller/testdata/";
 
 TEST(BinaryContentTest, BuildId) {
-  const std::string binary = absl::StrCat(::testing::SrcDir(), kTestDataDir,
-                                          "llvm_function_samples.binary");
+  const std::string binary = (llvm::Twine(::testing::SrcDir()) + kTestDataDir +
+                              "llvm_function_samples.binary")
+                                 .str();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(binary));
   EXPECT_EQ(binary_content->build_id,
@@ -54,9 +55,9 @@ TEST(BinaryContentTest, BuildId) {
 }
 
 TEST(BinaryContentTest, PieAndNoBuildId) {
-  const std::string binary =
-      absl::StrCat(::testing::SrcDir(), kTestDataDir,
-                   "propeller_barebone_pie_nobuildid.bin");
+  const std::string binary = (llvm::Twine(::testing::SrcDir()) + kTestDataDir +
+                              "propeller_barebone_pie_nobuildid.bin")
+                                 .str();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(binary));
   EXPECT_TRUE(binary_content->is_pie);
@@ -64,8 +65,9 @@ TEST(BinaryContentTest, PieAndNoBuildId) {
 }
 
 TEST(GetSymbolAddressTest, SymbolFound) {
-  const std::string binary =
-      absl::StrCat(::testing::SrcDir(), kTestDataDir, "propeller_sample_1.bin");
+  const std::string binary = (llvm::Twine(::testing::SrcDir()) + kTestDataDir +
+                              "propeller_sample_1.bin")
+                                 .str();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(binary));
   EXPECT_THAT(GetSymbolAddress(*binary_content->object_file, "main"),
@@ -73,8 +75,9 @@ TEST(GetSymbolAddressTest, SymbolFound) {
 }
 
 TEST(GetSymbolAddressTest, SymbolNotFound) {
-  const std::string binary =
-      absl::StrCat(::testing::SrcDir(), kTestDataDir, "propeller_sample_1.bin");
+  const std::string binary = (llvm::Twine(::testing::SrcDir()) + kTestDataDir +
+                              "propeller_sample_1.bin")
+                                 .str();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(binary));
   EXPECT_THAT(
@@ -83,8 +86,9 @@ TEST(GetSymbolAddressTest, SymbolNotFound) {
 }
 
 TEST(ReadBbAddrMapTest, ReadBbAddrMap) {
-  const std::string binary = absl::StrCat(::testing::SrcDir(), kTestDataDir,
-                                          "sample_pgo_analysis_map.bin");
+  const std::string binary = (llvm::Twine(::testing::SrcDir()) + kTestDataDir +
+                              "sample_pgo_analysis_map.bin")
+                                 .str();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(binary));
   absl::StatusOr<BbAddrMapData> bb_addr_map_data =
@@ -97,8 +101,9 @@ TEST(ReadBbAddrMapTest, ReadBbAddrMap) {
 TEST(ThunkSymbolsTest, X86NoThunks) {
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BinaryContent> binary_content,
-      GetBinaryContent(absl::StrCat(::testing::SrcDir(), kTestDataDir,
-                                    "propeller_sample_1.bin")));
+      GetBinaryContent((llvm::Twine(::testing::SrcDir()) + kTestDataDir +
+                        "propeller_sample_1.bin")
+                           .str()));
   EXPECT_THAT(ReadThunkSymbols(*binary_content), SizeIs(0));
 }
 

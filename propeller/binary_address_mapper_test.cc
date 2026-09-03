@@ -24,12 +24,12 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Object/ELFTypes.h"
 #include "propeller/bb_handle.h"
 #include "propeller/binary_address_branch_path.h"
@@ -81,8 +81,9 @@ MATCHER_P4(BbEntryIs, id_matcher, offset_matcher, size_matcher,
 }
 
 std::string GetPropellerTestDataFilePath(absl::string_view filename) {
-  const std::string testdata_filepath =
-      absl::StrCat(::testing::SrcDir(), "_main/propeller/testdata/", filename);
+  const std::string testdata_filepath = (llvm::Twine(::testing::SrcDir()) +
+                                         "_main/propeller/testdata/" + filename)
+                                            .str();
   return testdata_filepath;
 }
 

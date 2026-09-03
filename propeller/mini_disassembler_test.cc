@@ -18,9 +18,9 @@
 #include <string>
 
 #include "absl/status/status_matchers.h"
-#include "absl/strings/str_cat.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/lib/Target/X86/MCTargetDesc/X86MCTargetDesc.h"
 #include "propeller/binary_content.h"
@@ -33,9 +33,10 @@ using ::absl_testing::IsOkAndHolds;
 using ::testing::Not;
 
 TEST(MiniDisassemblerTest, DisassembleOne) {
-  const std::string binary = absl::StrCat(::testing::SrcDir(),
-                                          "_main/propeller/testdata/"
-                                          "llvm_function_samples.binary");
+  const std::string binary = (llvm::Twine(::testing::SrcDir()) +
+                              "_main/propeller/testdata/"
+                              "llvm_function_samples.binary")
+                                 .str();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(binary));
   ASSERT_OK_AND_ASSIGN(
@@ -46,9 +47,10 @@ TEST(MiniDisassemblerTest, DisassembleOne) {
 }
 
 TEST(MiniDisassemblerTest, DisassembleOneFailure) {
-  const std::string binary = absl::StrCat(::testing::SrcDir(),
-                                          "_main/propeller/testdata/"
-                                          "llvm_function_samples.binary");
+  const std::string binary = (llvm::Twine(::testing::SrcDir()) +
+                              "_main/propeller/testdata/"
+                              "llvm_function_samples.binary")
+                                 .str();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(binary));
   ASSERT_OK_AND_ASSIGN(
@@ -58,9 +60,10 @@ TEST(MiniDisassemblerTest, DisassembleOneFailure) {
 }
 
 TEST(MiniDisassemblerTest, RetMayAffectControlFlow) {
-  const std::string binary = absl::StrCat(::testing::SrcDir(),
-                                          "_main/propeller/testdata/"
-                                          "llvm_function_samples.binary");
+  const std::string binary = (llvm::Twine(::testing::SrcDir()) +
+                              "_main/propeller/testdata/"
+                              "llvm_function_samples.binary")
+                                 .str();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(binary));
   ASSERT_OK_AND_ASSIGN(
@@ -71,9 +74,10 @@ TEST(MiniDisassemblerTest, RetMayAffectControlFlow) {
 }
 
 TEST(MiniDisassemblerTest, CallMayAffectControlFlow) {
-  const std::string binary = absl::StrCat(::testing::SrcDir(),
-                                          "_main/propeller/testdata/"
-                                          "llvm_function_samples.binary");
+  const std::string binary = (llvm::Twine(::testing::SrcDir()) +
+                              "_main/propeller/testdata/"
+                              "llvm_function_samples.binary")
+                                 .str();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(binary));
   ASSERT_OK_AND_ASSIGN(
@@ -84,9 +88,10 @@ TEST(MiniDisassemblerTest, CallMayAffectControlFlow) {
 }
 
 TEST(MiniDisassemblerTest, BranchMayAffectControlFlow) {
-  const std::string binary = absl::StrCat(::testing::SrcDir(),
-                                          "_main/propeller/testdata/"
-                                          "llvm_function_samples.binary");
+  const std::string binary = (llvm::Twine(::testing::SrcDir()) +
+                              "_main/propeller/testdata/"
+                              "llvm_function_samples.binary")
+                                 .str();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(binary));
   ASSERT_OK_AND_ASSIGN(
@@ -96,9 +101,10 @@ TEST(MiniDisassemblerTest, BranchMayAffectControlFlow) {
 }
 
 TEST(MiniDisassemblerTest, PushMayNotAffectControlFlow) {
-  const std::string binary = absl::StrCat(::testing::SrcDir(),
-                                          "_main/propeller/testdata/"
-                                          "llvm_function_samples.binary");
+  const std::string binary = (llvm::Twine(::testing::SrcDir()) +
+                              "_main/propeller/testdata/"
+                              "llvm_function_samples.binary")
+                                 .str();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContent(binary));
   ASSERT_OK_AND_ASSIGN(
