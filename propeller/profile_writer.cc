@@ -29,7 +29,6 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -188,7 +187,7 @@ void WriteBBHash(const ControlFlowGraph& cfg, std::ofstream& out) {
   out << "h";
   cfg.ForEachNodeRef([&](const CFGNode& node) {
     out << " " << node.full_intra_cfg_id().profile_bb_id() << ":"
-        << absl::StrCat(absl::Hex(node.hash()));
+        << llvm::utohexstr(node.hash(), /*LowerCase=*/true);
   });
   out << "\n";
 }

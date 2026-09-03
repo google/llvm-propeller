@@ -24,8 +24,8 @@
 #include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "propeller/perf_data_provider.h"
@@ -61,8 +61,9 @@ class GenericFileReader : public FileReader {
                                     /*IsVolatile=*/false);
     if (!perf_file_content) {
       return absl::InternalError(
-          absl::StrCat(perf_file_content.getError().message(),
-                       "; When reading file ", file_name));
+          (llvm::Twine(perf_file_content.getError().message()) +
+           "; When reading file " + file_name)
+              .str());
     }
     return std::move(perf_file_content.get());
   }

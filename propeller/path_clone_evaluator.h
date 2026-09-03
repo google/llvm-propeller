@@ -27,7 +27,7 @@
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "propeller/cfg.h"
 #include "propeller/function_layout_info.h"
 #include "propeller/path_node.h"
@@ -182,7 +182,8 @@ template <typename Sink>
 void AbslStringify(Sink& sink, const EvaluatedPathCloning& e) {
   absl::Format(
       &sink, "[cloning: %v, score: %s, cfg_change: %v]", e.path_cloning,
-      e.score.has_value() ? absl::StrCat(*e.score) : "nullopt", e.cfg_change);
+      e.score.has_value() ? llvm::formatv("{0}", *e.score).str() : "nullopt",
+      e.cfg_change);
 }
 
 // Evaluates `path_cloning` for `cfg` and returns the evaluated path cloning.

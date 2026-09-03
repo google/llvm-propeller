@@ -38,8 +38,8 @@
 #include "absl/flags/parse.h"
 #include "absl/flags/usage.h"
 #include "absl/log/check.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/Twine.h"
 #include "propeller/profile_generator.h"
 #include "propeller/propeller_options.pb.h"
 #include "propeller/text_proto_flag.h"
@@ -87,7 +87,7 @@ inline bool AbslParseFlag(absl::string_view text, ProfileType* out,
     *out = found->second;
     return true;
   }
-  *err = absl::StrCat("Unknown profile type \"", text, "\"");
+  *err = (llvm::Twine("Unknown profile type \"") + text + "\"").str();
   return false;
 }
 

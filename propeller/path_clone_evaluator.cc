@@ -18,6 +18,7 @@
 #include <cmath>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -28,7 +29,8 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
+#include "llvm/Support/Format.h"
+#include "llvm/Support/raw_ostream.h"
 #include "propeller/bb_handle.h"
 #include "propeller/cfg.h"
 #include "propeller/cfg_edge_kind.h"
@@ -299,9 +301,12 @@ absl::StatusOr<EvaluatedPathCloning> EvaluateCloning(
   // the non-determinism from floating point imprecisions.
   score_gain = round(score_gain * kScoreGainPrecision) / kScoreGainPrecision;
   if (score_gain < min_score) {
-    return absl::FailedPreconditionError(
-        absl::StrCat("Cloning is not acceptable with score gain: ", score_gain,
-                     " < ", min_score));
+    std::string err_msg;
+    llvm::raw_string_ostream(err_msg)
+        << "Cloning is not acceptable with score gain: "
+        << llvm::format("%g", score_gain) << " < "
+        << llvm::format("%g", min_score);
+    return absl::FailedPreconditionError(err_msg);
   }
   return EvaluatedPathCloning{.path_cloning = std::move(path_cloning),
                               .score = score_gain,

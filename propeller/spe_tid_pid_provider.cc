@@ -25,7 +25,6 @@
 #include "absl/container/btree_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "google/protobuf/repeated_ptr_field.h"
 #include "src/quipper/arm_spe_decoder.h"
 #include "src/quipper/perf_data_utils.h"
@@ -45,8 +44,8 @@ SpeTidPidProvider::SpeTidPidProvider(
       absl::btree_map<uint64_t, pid_t>& pids = tids_to_pids_[tid];
       // If the most recent entry is from this PID, don't bother adding it.
       if (!pids.empty() && pids.rbegin()->second == pid) return;
-      VLOG(7) << absl::StrCat("tid = ", tid, ", timestamp = ", timestamp,
-                              ", pid = ", pid, "\n");
+      VLOG(7) << "tid = " << tid << ", timestamp = " << timestamp
+              << ", pid = " << pid << "\n";
       pids.insert(std::make_pair(timestamp, pid));
     };
 

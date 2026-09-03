@@ -28,12 +28,12 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Support/Path.h"
 #include "propeller/binary_address_branch.h"
 #include "propeller/binary_content.h"
@@ -131,14 +131,19 @@ absl::StatusOr<absl::flat_hash_set<std::string>> GetBuildIdNames(
   if (!build_id_names.empty()) return build_id_names;
 
   // No build matches.
-  return absl::FailedPreconditionError(absl::StrCat(
-      "No file with matching buildId in perf data, which contains the "
-      "following <file, build_id>:\n",
-      absl::StrJoin(
-          existing_build_ids, "\n",
-          [](std::string* out, const std::pair<std::string, std::string>& p) {
-            absl::StrAppend(out, "\t", p.first, ": ", p.second);
-          })));
+  return absl::FailedPreconditionError(
+      (llvm::Twine(
+           "No file with matching buildId in perf data, which contains the "
+           "following <file, build_id>:\n") +
+       absl::StrJoin(
+           existing_build_ids, "\n",
+           [](std::string* out, const std::pair<std::string, std::string>& p) {
+             *out += '\t';
+             *out += p.first;
+             *out += ": ";
+             *out += p.second;
+           }))
+          .str());
 }
 
 // Find the set of file names in perf.data file which has the same build id as
@@ -186,14 +191,16 @@ absl::StatusOr<BinaryMMaps> SelectMMaps(
   if (!perf_reader.ReadFromPointer(perf_data.buffer->getBufferStart(),
                                    perf_data.buffer->getBufferSize())) {
     return absl::FailedPreconditionError(
-        absl::StrCat("Failed to read perf data file: ", perf_data.description));
+        (llvm::Twine("Failed to read perf data file: ") + perf_data.description)
+            .str());
   }
 
   quipper::PerfParser perf_parser(&perf_reader);
   if (!perf_parser.ParseRawEvents()) {
     return absl::FailedPreconditionError(
-        absl::StrCat("Failed to parse perf raw events for perf file: '",
-                     perf_data.description, "'."));
+        (llvm::Twine("Failed to parse perf raw events for perf file: '") +
+         perf_data.description + "'.")
+            .str());
   }
 
   std::unique_ptr<MMapSelector> mmap_selector;
@@ -207,15 +214,18 @@ absl::StatusOr<BinaryMMaps> SelectMMaps(
       // has no build-id or no matching build-id found in perf.data.
       if (binary_content.build_id.empty()) {
         return absl::FailedPreconditionError(
-            absl::StrCat(binary_content.file_name,
-                         " has no build-id. Use '--profiled_binary_name' to "
-                         "force name matching."));
+            (llvm::Twine(binary_content.file_name) +
+             " has no build-id. Use '--profiled_binary_name' to "
+             "force name matching.")
+                .str());
       }
-      return absl::FailedPreconditionError(absl::StrCat(
-          binary_content.file_name, " has build-id '", binary_content.build_id,
-          "', however, this build-id is not found in the perf "
-          "build-id list. Use '--profiled_binary_name' to force name "
-          "matching."));
+      return absl::FailedPreconditionError(
+          (llvm::Twine(binary_content.file_name) + " has build-id '" +
+           binary_content.build_id +
+           "', however, this build-id is not found in the perf "
+           "build-id list. Use '--profiled_binary_name' to force name "
+           "matching.")
+              .str());
     }
   } else {
     mmap_selector =
@@ -253,16 +263,18 @@ absl::StatusOr<BinaryMMaps> SelectMMaps(
         }
         if (!((load_addr + load_size <= e.load_addr) ||
               (e.load_addr + e.load_size <= load_addr))) {
-          return absl::FailedPreconditionError(absl::StrCat(
-              "Found conflict mmap event: ",
-              MMapEntry{pid, load_addr, load_size, page_offset,
-                        binary_content.file_name}
-                  .DebugString(),
-              ". Existing mmap entries:\n",
-              absl::StrJoin(existing_mmaps->second, "\n",
-                            [&](std::string* out, const MMapEntry& me) {
-                              absl::StrAppend(out, "\t", me.DebugString());
-                            })));
+          return absl::FailedPreconditionError(
+              (llvm::Twine("Found conflict mmap event: ") +
+               MMapEntry{pid, load_addr, load_size, page_offset,
+                         binary_content.file_name}
+                   .DebugString() +
+               ". Existing mmap entries:\n" +
+               absl::StrJoin(existing_mmaps->second, "\n",
+                             [](std::string* out, const MMapEntry& me) {
+                               *out += '\t';
+                               *out += me.DebugString();
+                             }))
+                  .str());
         }
       }
       if (!entry_exists)
@@ -276,17 +288,18 @@ absl::StatusOr<BinaryMMaps> SelectMMaps(
 
   if (binary_mmaps.empty()) {
     return absl::FailedPreconditionError(
-        absl::StrCat("Failed to find any mmap entries matching: '",
-                     absl::StrJoin(match_mmap_names, "' or '"), "'."));
+        (llvm::Twine("Failed to find any mmap entries matching: '") +
+         absl::StrJoin(match_mmap_names, "' or '") + "'.")
+            .str());
   }
 
   for (const auto& [pid, mmap_entries] : binary_mmaps) {
-    LOG(INFO) << absl::StrCat(
-        "Found mmap: pid=", pid, "\n",
-        absl::StrJoin(mmap_entries, "\n",
-                      [](std::string* out, const MMapEntry& mme) {
-                        return absl::StrAppend(out, "\t", mme.DebugString());
-                      }));
+    LOG(INFO) << "Found mmap: pid=" << pid << "\n"
+              << absl::StrJoin(mmap_entries, "\n",
+                               [](std::string* out, const MMapEntry& mme) {
+                                 *out += '\t';
+                                 *out += mme.DebugString();
+                               });
   }
   return binary_mmaps;
 }

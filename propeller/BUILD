@@ -470,6 +470,7 @@ cc_library(
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -853,6 +854,7 @@ cc_library(
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1028,6 +1030,7 @@ cc_library(
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/strings",
         "@com_google_protobuf//:protobuf_lite",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1058,6 +1061,7 @@ cc_binary(
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
     ],
 )
 
