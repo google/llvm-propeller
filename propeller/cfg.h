@@ -31,10 +31,12 @@
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "propeller/cfg_edge.h"
 #include "propeller/cfg_edge_kind.h"
 #include "propeller/cfg_id.h"
@@ -86,12 +88,17 @@ struct CfgChangeFromPathCloning {
     CFGEdgeKind kind;
     int64_t weight;
 
+    std::string DebugString() const {
+      return llvm::formatv("({0}{1}->{2}{3} w: {4} k: {5})", src_bb_index,
+                           src_is_cloned ? "'" : "", sink_bb_index,
+                           sink_is_cloned ? "'" : "", weight,
+                           GetCfgEdgeKindString(kind))
+          .str();
+    }
+
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const IntraEdgeReroute& reroute) {
-      absl::Format(&sink, "(%d%s->%d%s w: %d k: %s)", reroute.src_bb_index,
-                   reroute.src_is_cloned ? "'" : "", reroute.sink_bb_index,
-                   reroute.sink_is_cloned ? "'" : "", reroute.weight,
-                   GetCfgEdgeKindString(reroute.kind));
+      sink.Append(reroute.DebugString());
     }
   };
   // Represents rerouting the control flow for a single inter-function edge.
@@ -106,14 +113,18 @@ struct CfgChangeFromPathCloning {
     CFGEdgeKind kind;
     int64_t weight;
 
+    std::string DebugString() const {
+      return llvm::formatv("(F{0}:{1}{2}->{3}:{4}{5} w: {6} k: {7})",
+                           src_function_index, src_bb_index,
+                           src_is_cloned ? "'" : "", sink_function_index,
+                           sink_bb_index, sink_is_cloned ? "'" : "", weight,
+                           GetCfgEdgeKindString(kind))
+          .str();
+    }
+
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const InterEdgeReroute& reroute) {
-      absl::Format(&sink, "(F%d:%d%s->%d:%d%s w: %d k: %s)",
-                   reroute.src_function_index, reroute.src_bb_index,
-                   reroute.src_is_cloned ? "'" : "",
-                   reroute.sink_function_index, reroute.sink_bb_index,
-                   reroute.sink_is_cloned ? "'" : "", reroute.weight,
-                   GetCfgEdgeKindString(reroute.kind));
+      sink.Append(reroute.DebugString());
     }
   };
 
@@ -133,17 +144,28 @@ struct CfgChangeFromPathCloning {
   template <typename Sink>
   friend void AbslStringify(Sink& sink,
                             const CfgChangeFromPathCloning& change) {
-    absl::Format(&sink,
-                 "path_pred: %d, path_to_clone: [%s], paths_to_drop: [%s], "
-                 "intra_reroutes: [%s], inter_reroutes: [%s]",
-                 change.path_pred_bb_index,
-                 absl::StrJoin(change.path_to_clone, ", "),
-                 absl::StrJoin(change.paths_to_drop, ", ",
-                               [](auto* out, const PathNode* p) {
-                                 absl::StrAppend(out, p->path_from_root());
-                               }),
-                 absl::StrJoin(change.intra_edge_reroutes, ", "),
-                 absl::StrJoin(change.inter_edge_reroutes, ", "));
+    absl::Format(
+        &sink,
+        "path_pred: %d, path_to_clone: [%s], paths_to_drop: [%s], "
+        "intra_reroutes: [%s], inter_reroutes: [%s]",
+        change.path_pred_bb_index,
+        llvm::join(llvm::map_range(change.path_to_clone,
+                                   [](int bb) { return std::to_string(bb); }),
+                   ", "),
+        llvm::join(llvm::map_range(change.paths_to_drop,
+                                   [](const PathNode* p) {
+                                     return FormatPathFromRoot(
+                                         p->path_from_root());
+                                   }),
+                   ", "),
+        llvm::join(
+            llvm::map_range(change.intra_edge_reroutes,
+                            [](const auto& r) { return r.DebugString(); }),
+            ", "),
+        llvm::join(
+            llvm::map_range(change.inter_edge_reroutes,
+                            [](const auto& r) { return r.DebugString(); }),
+            ", "));
   }
 };
 
@@ -495,7 +517,7 @@ inline void AbslStringify(Sink& sink, const ControlFlowGraph& cfg) {
   absl::Format(&sink,
                "CFG for function_name: {%s}, function_index: %d, module: %s, "
                "section: %s",
-               absl::StrJoin(cfg.names(), ", "), cfg.function_index(),
+               llvm::join(cfg.names(), ", "), cfg.function_index(),
                cfg.module_name().value_or(""), cfg.section_name());
   absl::Format(&sink, "\n  nodes:");
   for (const auto& node : cfg.nodes()) {

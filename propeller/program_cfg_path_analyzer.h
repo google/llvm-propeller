@@ -27,9 +27,11 @@
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/strings/str_join.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/Twine.h"
 #include "propeller/bb_handle.h"
 #include "propeller/binary_address_mapper.h"
 #include "propeller/cfg.h"
@@ -154,8 +156,18 @@ struct PathProbeSampleInfo {
                             const PathProbeSampleInfo& path_probe_sample_info) {
     absl::Format(&sink, "sample_time: %s\n",
                  absl::FormatTime(path_probe_sample_info.sample_time));
-    absl::Format(&sink, "path_probes: %s\n",
-                 absl::StrJoin(path_probe_sample_info.path_probes, ","));
+    absl::Format(
+        &sink, "path_probes: %s\n",
+        llvm::join(
+            llvm::map_range(path_probe_sample_info.path_probes,
+                            [](const PathProbe& probe) {
+                              return (llvm::Twine(probe.pred_node_bb_index()) +
+                                      "->" +
+                                      FormatPathFromRoot(
+                                          probe.path_node()->path_from_root()))
+                                  .str();
+                            }),
+            ","));
     absl::Format(&sink, "path_length: %d\n",
                  path_probe_sample_info.path_length);
   }

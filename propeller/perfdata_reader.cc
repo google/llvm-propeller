@@ -29,9 +29,10 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Path.h"
@@ -135,14 +136,13 @@ absl::StatusOr<absl::flat_hash_set<std::string>> GetBuildIdNames(
       (llvm::Twine(
            "No file with matching buildId in perf data, which contains the "
            "following <file, build_id>:\n") +
-       absl::StrJoin(
-           existing_build_ids, "\n",
-           [](std::string* out, const std::pair<std::string, std::string>& p) {
-             *out += '\t';
-             *out += p.first;
-             *out += ": ";
-             *out += p.second;
-           }))
+       llvm::join(
+           llvm::map_range(
+               existing_build_ids,
+               [](const std::pair<std::string, std::string>& p) {
+                 return (llvm::Twine("\t") + p.first + ": " + p.second).str();
+               }),
+           "\n"))
           .str());
 }
 
@@ -269,11 +269,13 @@ absl::StatusOr<BinaryMMaps> SelectMMaps(
                          binary_content.file_name}
                    .DebugString() +
                ". Existing mmap entries:\n" +
-               absl::StrJoin(existing_mmaps->second, "\n",
-                             [](std::string* out, const MMapEntry& me) {
-                               *out += '\t';
-                               *out += me.DebugString();
-                             }))
+               llvm::join(
+                   llvm::map_range(
+                       existing_mmaps->second,
+                       [](const MMapEntry& me) {
+                         return (llvm::Twine("\t") + me.DebugString()).str();
+                       }),
+                   "\n"))
                   .str());
         }
       }
@@ -289,17 +291,19 @@ absl::StatusOr<BinaryMMaps> SelectMMaps(
   if (binary_mmaps.empty()) {
     return absl::FailedPreconditionError(
         (llvm::Twine("Failed to find any mmap entries matching: '") +
-         absl::StrJoin(match_mmap_names, "' or '") + "'.")
+         llvm::join(match_mmap_names, "' or '") + "'.")
             .str());
   }
 
   for (const auto& [pid, mmap_entries] : binary_mmaps) {
     LOG(INFO) << "Found mmap: pid=" << pid << "\n"
-              << absl::StrJoin(mmap_entries, "\n",
-                               [](std::string* out, const MMapEntry& mme) {
-                                 *out += '\t';
-                                 *out += mme.DebugString();
-                               });
+              << llvm::join(
+                     llvm::map_range(
+                         mmap_entries,
+                         [](const MMapEntry& mme) {
+                           return (llvm::Twine("\t") + mme.DebugString()).str();
+                         }),
+                     "\n");
   }
   return binary_mmaps;
 }

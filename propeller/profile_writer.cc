@@ -30,8 +30,8 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
@@ -278,12 +278,13 @@ absl::Status PropellerProfileWriter::Write(
       }
       for (const std::vector<int>& clone_path : cfg->clone_paths()) {
         cc_profile_os << profile_encoding_.clone_path_specifier
-                      << absl::StrJoin(
-                             clone_path, " ",
-                             [&](std::string* out, const int bb_index) {
-                               absl::StrAppend(out,
-                                               cfg->nodes()[bb_index]->bb_id());
-                             })
+                      << llvm::join(llvm::map_range(
+                                        clone_path,
+                                        [&](int bb_index) {
+                                          return std::to_string(
+                                              cfg->nodes()[bb_index]->bb_id());
+                                        }),
+                                    " ")
                       << "\n";
       }
       if (options_.verbose_cluster_output()) {

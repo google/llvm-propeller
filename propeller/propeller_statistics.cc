@@ -20,7 +20,8 @@
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "propeller/cfg_edge_kind.h"
 #include "propeller/chain_merge_order.h"
@@ -34,32 +35,32 @@ std::string PropellerStats::CodeLayoutStats::DebugString() const {
   const double inter_score_percent_change =
       100 * (optimized_inter_score / original_inter_score - 1);
 
-  return absl::StrJoin(
-      {llvm::formatv(
-           "Merge order stats: {0}",
-           absl::StrJoin(n_assemblies_by_merge_order, ", ",
-                         [](std::string* out,
-                            const std::pair<ChainMergeOrder, int>& entry) {
-                           *out += '[';
-                           *out += GetMergeOrderName(entry.first);
-                           *out += ':';
-                           *out += std::to_string(entry.second);
-                           *out += ']';
-                         }))
-           .str(),
-       llvm::formatv("Initial chains stats: single-node chains: [{0}] "
-                     "multi-node chains: [{1}]",
-                     n_single_node_chains, n_multi_node_chains)
-           .str(),
-       absl::StrFormat(
-           "Changed inter-function (ext-tsp) score by %+.1f%% from %f to %f.",
-           inter_score_percent_change, original_inter_score,
-           optimized_inter_score),
-       absl::StrFormat(
-           "Changed intra-function (ext-tsp) score by %+.1f%% from %f to %f",
-           intra_score_percent_change, original_intra_score,
-           optimized_intra_score)},
-      "\n");
+  return llvm::join_items(
+      "\n",
+      llvm::formatv(
+          "Merge order stats: {0}",
+          llvm::join(
+              llvm::map_range(n_assemblies_by_merge_order,
+                              [](const std::pair<ChainMergeOrder, int>& entry) {
+                                return (llvm::Twine("[") +
+                                        GetMergeOrderName(entry.first) + ":" +
+                                        llvm::Twine(entry.second) + "]")
+                                    .str();
+                              }),
+              ", "))
+          .str(),
+      llvm::formatv("Initial chains stats: single-node chains: [{0}] "
+                    "multi-node chains: [{1}]",
+                    n_single_node_chains, n_multi_node_chains)
+          .str(),
+      absl::StrFormat(
+          "Changed inter-function (ext-tsp) score by %+.1f%% from %f to %f.",
+          inter_score_percent_change, original_inter_score,
+          optimized_inter_score),
+      absl::StrFormat(
+          "Changed intra-function (ext-tsp) score by %+.1f%% from %f to %f",
+          intra_score_percent_change, original_intra_score,
+          optimized_intra_score));
 }
 
 std::string PropellerStats::DisassemblyStats::Stat::DebugString() const {
@@ -99,25 +100,27 @@ std::string PropellerStats::CfgStats::DebugString() const {
           .str(),
       llvm::formatv(
           "Created {0} edges: {{{1}}.", edges_created,
-          absl::StrJoin(
-              edges_created_by_kind, ", ",
-              [edges_created](std::string* out,
-                              const std::pair<CFGEdgeKind, int64_t>& entry) {
-                *out += absl::StrFormat("%s: %.2f%%",
-                                        GetCfgEdgeKindString(entry.first),
-                                        entry.second * 100.0 / edges_created);
-              }))
+          llvm::join(llvm::map_range(
+                         edges_created_by_kind,
+                         [edges_created](
+                             const std::pair<CFGEdgeKind, int64_t>& entry) {
+                           return absl::StrFormat(
+                               "%s: %.2f%%", GetCfgEdgeKindString(entry.first),
+                               entry.second * 100.0 / edges_created);
+                         }),
+                     ", "))
           .str(),
       llvm::formatv(
           "Profiled {0} total edge weight: {{{1}}.", total_edge_weight,
-          absl::StrJoin(total_edge_weight_by_kind, ", ",
-                        [total_edge_weight](
-                            std::string* out,
-                            const std::pair<CFGEdgeKind, int64_t>& entry) {
-                          *out += absl::StrFormat(
-                              "%s: %.2f%%", GetCfgEdgeKindString(entry.first),
-                              entry.second * 100.0 / total_edge_weight);
-                        }))
+          llvm::join(llvm::map_range(
+                         total_edge_weight_by_kind,
+                         [total_edge_weight](
+                             const std::pair<CFGEdgeKind, int64_t>& entry) {
+                           return absl::StrFormat(
+                               "%s: %.2f%%", GetCfgEdgeKindString(entry.first),
+                               entry.second * 100.0 / total_edge_weight);
+                         }),
+                     ", "))
           .str()};
 
   if (edges_with_same_src_sink_but_different_type) {
@@ -128,7 +131,7 @@ std::string PropellerStats::CfgStats::DebugString() const {
             .str());
   }
 
-  return absl::StrJoin(lines, "\n");
+  return llvm::join(lines, "\n");
 }
 
 std::string PropellerStats::BbAddrMapStats::DebugString() const {
@@ -148,7 +151,7 @@ std::string PropellerStats::BbAddrMapStats::DebugString() const {
                       bbaddrmap_function_does_not_have_symtab_entry)
             .str());
   }
-  return absl::StrJoin(lines, "\n");
+  return llvm::join(lines, "\n");
 }
 
 std::string PropellerStats::CloningStats::DebugString() const {
@@ -165,6 +168,6 @@ std::string PropellerStats::DebugString() const {
       profile_stats.DebugString(),     bbaddrmap_stats.DebugString(),
       cfg_stats.DebugString(),         code_layout_stats.DebugString(),
       disassembly_stats.DebugString(), cloning_stats.DebugString()};
-  return absl::StrJoin(stat_lines, "\n");
+  return llvm::join(stat_lines, "\n");
 }
 }  // namespace propeller

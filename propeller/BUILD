@@ -491,6 +491,7 @@ cc_library(
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/strings:str_format",
         "@abseil-cpp//absl/time",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -788,6 +789,7 @@ cc_library(
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -825,6 +827,7 @@ cc_library(
         "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/time",
         "@abseil-cpp//absl/types:span",
+        "@llvm-project//llvm:Support",
     ],
 )
 
