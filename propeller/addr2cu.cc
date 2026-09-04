@@ -24,7 +24,6 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/DebugInfo/DWARF/DWARFCompileUnit.h"
@@ -32,6 +31,7 @@
 #include "llvm/DebugInfo/DWARF/DWARFDie.h"
 #include "llvm/DebugInfo/DWARF/DWARFFormValue.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/FormatVariadic.h"
 
 namespace propeller {
 
@@ -64,7 +64,8 @@ absl::StatusOr<absl::string_view> Addr2Cu::GetCompileUnitFileNameForCodeAddress(
       dwarf_context_.getCompileUnitForCodeAddress(code_address);
   if (unit == nullptr) {
     return absl::FailedPreconditionError(
-        absl::StrFormat("no compile unit found on address 0x%x", code_address));
+        llvm::formatv("no compile unit found on address {0:x}", code_address)
+            .str());
   }
   llvm::DWARFDie die = unit->getNonSkeletonUnitDIE();
   std::optional<llvm::DWARFFormValue> form_value =

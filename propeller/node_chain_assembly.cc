@@ -24,7 +24,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "propeller/cfg_edge.h"
 #include "propeller/chain_merge_order.h"
 #include "propeller/code_layout_scorer.h"
@@ -64,8 +64,10 @@ absl::StatusOr<NodeChainAssembly> NodeChainAssembly::BuildNodeChainAssembly(
 
   // Also omit assemblies without positive gain.
   if (assembly.score_gain() < 0) {
-    return absl::FailedPreconditionError(absl::StrFormat(
-        "Assembly has negative score gain: %f", assembly.score_gain()));
+    return absl::FailedPreconditionError(
+        llvm::formatv("Assembly has negative score gain: {0:F6}",
+                      assembly.score_gain())
+            .str());
   } else if (assembly.score_gain() == 0 && options.error_on_zero_score_gain) {
     return absl::FailedPreconditionError("Assembly has zero score gain.");
   }
