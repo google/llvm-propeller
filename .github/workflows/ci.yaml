@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-22.04-16core
     steps:
       - name: Checkout the repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Bazelisk
         uses: bazel-contrib/setup-bazel@0.18.0
@@ -54,7 +54,7 @@ jobs:
           sudo ./llvm.sh 20
 
       - name: Mount the CMake dependency source cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             build/_deps/*-src
@@ -66,7 +66,7 @@ jobs:
             ${{ runner.os }}-cmake-src-
 
       - name: Mount the CMake dependency build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             build/_deps/*-build
