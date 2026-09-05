@@ -32,11 +32,11 @@
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ELFTypes.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "propeller/addr2cu.h"
 #include "propeller/bb_handle.h"
 #include "propeller/binary_address_mapper.h"
@@ -297,10 +297,12 @@ absl::Status PropellerProfileComputer::InitializeProgramProfile() {
     if (binary_content_->dwarf_context != nullptr) {
       addr2cu = std::make_unique<Addr2Cu>(*binary_content_->dwarf_context);
     } else {
-      return absl::FailedPreconditionError(absl::StrFormat(
-          "no DWARFContext is available for '%s'. Either because it does not "
-          "have debuginfo, or '%s.dwp' does not exist.",
-          options_.binary_name().c_str(), options_.binary_name().c_str()));
+      return absl::FailedPreconditionError(
+          llvm::formatv("no DWARFContext is available for '{0}'. Either "
+                        "because it does not "
+                        "have debuginfo, or '{0}.dwp' does not exist.",
+                        options_.binary_name())
+              .str());
     }
   }
   ASSIGN_OR_RETURN(program_cfg_,

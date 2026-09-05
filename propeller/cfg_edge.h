@@ -21,7 +21,6 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/strings/str_format.h"
 #include "llvm/ADT/Twine.h"
 #include "propeller/cfg_edge_kind.h"
 
@@ -59,8 +58,8 @@ class CFGEdge final {
   int64_t DecrementWeight(int64_t value) {
     int64_t reduction = std::min(value, weight_);
     if (weight_ < value) {
-      LOG(ERROR) << absl::StrFormat(
-          "Edge weight is lower than value (%lld): %v", value, *this);
+      LOG(ERROR) << "Edge weight is lower than value (" << value
+                 << "): " << *this;
     }
     weight_ -= reduction;
     return reduction;

@@ -27,9 +27,9 @@
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "propeller/binary_content.h"
 #include "propeller/branch_frequencies.h"
 #include "propeller/lbr_aggregation.h"
@@ -71,9 +71,10 @@ struct MMapEntry {
   }
 
   std::string DebugString() const {
-    return absl::StrFormat("[%#x, %#x](pgoff=%#x, size=%#x, fn='%s')",
-                           load_addr, load_addr + load_size, page_offset,
-                           load_size, file_name);
+    return llvm::formatv("[{0:x}, {1:x}](pgoff={2:x}, size={3:x}, fn='{4}')",
+                         load_addr, load_addr + load_size, page_offset,
+                         load_size, file_name)
+        .str();
   }
 };
 

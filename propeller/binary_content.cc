@@ -29,7 +29,6 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
@@ -348,9 +347,11 @@ absl::StatusOr<BbAddrMapData> ReadBbAddrMap(
             .str());
   }
   if (bb_addr_map->empty()) {
-    return absl::FailedPreconditionError(absl::StrFormat(
-        "'%s' does not have a non-empty LLVM_BB_ADDR_MAP section.",
-        binary_content.file_name));
+    return absl::FailedPreconditionError(
+        llvm::formatv(
+            "'{0}' does not have a non-empty LLVM_BB_ADDR_MAP section.",
+            binary_content.file_name)
+            .str());
   }
   return BbAddrMapData{
       .bb_addr_maps = *std::move(bb_addr_map),

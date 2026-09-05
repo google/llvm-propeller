@@ -25,7 +25,6 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -75,8 +74,9 @@ absl::StatusOr<BinaryData> SetupBinaryData(absl::string_view binary) {
       llvm::object::ObjectFile::createELFObjectFile(**mem_buf);
   if (!object_file) {
     return absl::FailedPreconditionError(
-        absl::StrFormat("failed creating ELFObjectFile: %s",
-                        llvm::toString(object_file.takeError())));
+        (llvm::Twine("failed creating ELFObjectFile: ") +
+         llvm::toString(object_file.takeError()))
+            .str());
   }
 
   return BinaryData{.mem_buf = std::move(*mem_buf),

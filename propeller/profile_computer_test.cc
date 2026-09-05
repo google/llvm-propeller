@@ -33,6 +33,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "propeller/binary_address_mapper.h"
 #include "propeller/binary_content.h"
 #include "propeller/branch_aggregation.h"
@@ -78,12 +79,12 @@ class MockBranchAggregator : public BranchAggregator {
 
 MATCHER_P7(CfgNodeFieldsAre, function_index, bb_index, clone_number, bb_id,
            address, size, freq,
-           absl::StrFormat("%s fields {function_index: %d, bb_index: %d, "
-                           "clone_number: %d, bb_id: %d, address: 0x%llX, "
-                           "size: 0x%llX, frequency: %llu}",
-                           negation ? "doesn't have" : "has", function_index,
-                           bb_index, clone_number, bb_id, address, size,
-                           freq)) {
+           llvm::formatv("{0} fields {{function_index: {1}, bb_index: {2}, "
+                         "clone_number: {3}, bb_id: {4}, address: {5:X+}, "
+                         "size: {6:X+}, frequency: {7}}",
+                         negation ? "doesn't have" : "has", function_index,
+                         bb_index, clone_number, bb_id, address, size, freq)
+               .str()) {
   return arg.function_index() == function_index && arg.bb_index() == bb_index &&
          arg.clone_number() == clone_number && arg.addr() == address &&
          arg.bb_id() == bb_id && arg.size() == size &&

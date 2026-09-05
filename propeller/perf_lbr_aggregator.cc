@@ -24,8 +24,8 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "llvm/MC/MCInst.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "propeller/binary_address_branch.h"
 #include "propeller/binary_content.h"
 #include "propeller/lbr_aggregation.h"
@@ -97,18 +97,22 @@ PerfLbrAggregator::CheckLbrAddress(const LbrAggregation& lbr_aggregation,
     absl::StatusOr<llvm::MCInst> inst = disassembler->DisassembleOne(address);
     if (!inst.ok()) {
       result.could_not_disassemble.Increment(counter);
-      LOG(WARNING) << absl::StrFormat(
-          "not able to disassemble address: 0x%x with counter sum %d", address,
-          counter);
+      LOG(WARNING)
+          << llvm::formatv(
+                 "not able to disassemble address: {0:x} with counter sum {1}",
+                 address, counter)
+                 .str();
       continue;
     }
     if (!disassembler->MayAffectControlFlow(*inst)) {
       result.cant_affect_control_flow.Increment(counter);
-      LOG(WARNING) << absl::StrFormat(
-          "not a potentially-control-flow-affecting "
-          "instruction at address: "
-          "0x%x with counter sum %d, instruction name: %s",
-          address, counter, disassembler->GetInstructionName(*inst));
+      LOG(WARNING) << llvm::formatv(
+                          "not a potentially-control-flow-affecting "
+                          "instruction at address: "
+                          "{0:x} with counter sum {1}, instruction name: {2}",
+                          address, counter,
+                          disassembler->GetInstructionName(*inst))
+                          .str();
     } else {
       result.may_affect_control_flow.Increment(counter);
     }

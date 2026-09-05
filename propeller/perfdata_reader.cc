@@ -28,13 +28,13 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Path.h"
 #include "propeller/binary_address_branch.h"
 #include "propeller/binary_content.h"
@@ -354,10 +354,12 @@ uint64_t PerfDataReader::RuntimeAddressToBinaryAddress(uint32_t pid,
         // We *believe* all kernel samples should come from the first executable
         // kernel segment. (The second executable segment contains
         // ".init.text" and ".exit.text", etc.)
-        LOG(WARNING) << absl::StrFormat(
-            "kernel runtime address 0x%lx does not come from the first "
-            "executable segment",
-            addr);
+        LOG(WARNING)
+            << llvm::formatv(
+                   "kernel runtime address {0:x} does not come from the first "
+                   "executable segment",
+                   addr)
+                   .str();
       }
     } else {
       off = segment.offset;
@@ -366,10 +368,12 @@ uint64_t PerfDataReader::RuntimeAddressToBinaryAddress(uint32_t pid,
       return file_offset - off + segment.vaddr;
     }
   }
-  LOG(WARNING) << absl::StrFormat(
-      "pid: %u, virtual address: %#x belongs to '%s', file_offset=%lu, not "
-      "inside any loadable segment.",
-      pid, addr, mmap->file_name, file_offset);
+  LOG(WARNING) << llvm::formatv(
+                      "pid: {0}, virtual address: {1:x} belongs to '{2}', "
+                      "file_offset={3}, not "
+                      "inside any loadable segment.",
+                      pid, addr, mmap->file_name, file_offset)
+                      .str();
   return kInvalidBinaryAddress;
 }
 

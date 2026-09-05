@@ -26,11 +26,11 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Object/ELFTypes.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "propeller/addr2cu.h"
 #include "propeller/bb_handle.h"
 #include "propeller/binary_address_mapper.h"
@@ -310,10 +310,11 @@ absl::Status ProgramCfgBuilder::CreateEdges(
           static_cast<double>(stats_->cfg_stats.total_edge_weight_created()) >
       0.3) {
     return absl::InternalError(
-        absl::StrFormat("Too many jumps into middle of basic blocks detected, "
-                        "probably because of source drift (%d out of %d).",
-                        weight_on_dubious_edges,
-                        stats_->cfg_stats.total_edge_weight_created()));
+        llvm::formatv("Too many jumps into middle of basic blocks detected, "
+                      "probably because of source drift ({0} out of {1}).",
+                      weight_on_dubious_edges,
+                      stats_->cfg_stats.total_edge_weight_created())
+            .str());
   }
 
   if (stats_->cfg_stats.total_edges_created() /
