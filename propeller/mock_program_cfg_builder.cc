@@ -28,13 +28,13 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "google/protobuf/io/zero_copy_stream_impl.h"  // for "proto2::io::FileInputStream"
 #include "google/protobuf/text_format.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ELFTypes.h"
 #include "llvm/Support/Allocator.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/StringSaver.h"
 #include "propeller/cfg.h"
 #include "propeller/cfg.pb.h"
@@ -147,8 +147,9 @@ absl::StatusOr<std::unique_ptr<ProtoProgramCfg>> BuildFromCfgProtoPath(
   int fd = open(path_to_cfg_proto.c_str(), O_RDONLY);
   if (fd == -1) {
     return absl::Status(absl::ErrnoToStatusCode(errno),
-                        absl::StrFormat("Failed to open and read profile '%s'.",
-                                        path_to_cfg_proto));
+                        llvm::formatv("Failed to open and read profile '{0}'.",
+                                      path_to_cfg_proto)
+                            .str());
   }
   google::protobuf::io::FileInputStream fis(fd);
   fis.SetCloseOnDelete(true);
@@ -156,7 +157,8 @@ absl::StatusOr<std::unique_ptr<ProtoProgramCfg>> BuildFromCfgProtoPath(
   ProgramCfgPb program_cfg_pb;
   if (!google::protobuf::TextFormat::Parse(&fis, &program_cfg_pb)) {
     return absl::InternalError(
-        absl::StrFormat("Unable to parse profile '%s'", path_to_cfg_proto));
+        llvm::formatv("Unable to parse profile '{0}'", path_to_cfg_proto)
+            .str());
   }
   return BuildFromCfgProto(std::move(program_cfg_pb));
 }

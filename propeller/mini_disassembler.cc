@@ -24,7 +24,6 @@
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -34,6 +33,7 @@
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
@@ -54,39 +54,51 @@ MiniDisassembler::Create(const llvm::object::ObjectFile* object_file) {
   triple.setArch(llvm::Triple::ArchType(object_file->getArch()));
   const llvm::Target* target = llvm::TargetRegistry::lookupTarget(triple, err);
   if (target == nullptr) {
-    return absl::FailedPreconditionError(absl::StrFormat(
-        "no target for triple '%s': %s", triple.getArchName(), err));
+    return absl::FailedPreconditionError(
+        llvm::formatv("no target for triple '{0}': {1}", triple.getArchName(),
+                      err)
+            .str());
   }
   disassembler->mri_ = absl::WrapUnique(target->createMCRegInfo(triple));
   if (disassembler->mri_ == nullptr) {
-    return absl::FailedPreconditionError(absl::StrFormat(
-        "createMCRegInfo failed for triple '%s'", triple.getArchName()));
+    return absl::FailedPreconditionError(
+        llvm::formatv("createMCRegInfo failed for triple '{0}'",
+                      triple.getArchName())
+            .str());
   }
   disassembler->asm_info_ = absl::WrapUnique(target->createMCAsmInfo(
       *disassembler->mri_, triple, disassembler->options_));
   if (disassembler->asm_info_ == nullptr) {
-    return absl::FailedPreconditionError(absl::StrFormat(
-        "createMCAsmInfo failed for triple '%s'", triple.getArchName()));
+    return absl::FailedPreconditionError(
+        llvm::formatv("createMCAsmInfo failed for triple '{0}'",
+                      triple.getArchName())
+            .str());
   }
 
   disassembler->sti_ = absl::WrapUnique(
       target->createMCSubtargetInfo(triple, /*CPU=*/"", /*Features=*/""));
   if (disassembler->sti_ == nullptr) {
-    return absl::FailedPreconditionError(absl::StrFormat(
-        "createMCSubtargetInfo failed for triple '%s'", triple.getArchName()));
+    return absl::FailedPreconditionError(
+        llvm::formatv("createMCSubtargetInfo failed for triple '{0}'",
+                      triple.getArchName())
+            .str());
   }
 
   disassembler->mii_ = absl::WrapUnique(target->createMCInstrInfo());
   if (disassembler->mii_ == nullptr) {
-    return absl::FailedPreconditionError(absl::StrFormat(
-        "createMCInstrInfo failed for triple '%s'", triple.getArchName()));
+    return absl::FailedPreconditionError(
+        llvm::formatv("createMCInstrInfo failed for triple '{0}'",
+                      triple.getArchName())
+            .str());
   }
 
   disassembler->mia_ =
       absl::WrapUnique(target->createMCInstrAnalysis(disassembler->mii_.get()));
   if (disassembler->mia_ == nullptr) {
-    return absl::FailedPreconditionError(absl::StrFormat(
-        "createMCInstrAnalysis failed for triple '%s'", triple.getArchName()));
+    return absl::FailedPreconditionError(
+        llvm::formatv("createMCInstrAnalysis failed for triple '{0}'",
+                      triple.getArchName())
+            .str());
   }
 
   disassembler->ctx_ = std::make_unique<llvm::MCContext>(
@@ -95,8 +107,7 @@ MiniDisassembler::Create(const llvm::object::ObjectFile* object_file) {
   disassembler->disasm_ = absl::WrapUnique(
       target->createMCDisassembler(*disassembler->sti_, *disassembler->ctx_));
   if (disassembler->disasm_ == nullptr)
-    return absl::FailedPreconditionError(
-        absl::StrFormat("createMCDisassembler failed"));
+    return absl::FailedPreconditionError("createMCDisassembler failed");
 
   return disassembler;
 }
@@ -123,13 +134,16 @@ absl::StatusOr<llvm::MCInst> MiniDisassembler::DisassembleOne(
     if (!disasm_->getInstruction(inst, size,
                                  content_bytes.slice(section_offset),
                                  binary_address, llvm::nulls())) {
-      return absl::FailedPreconditionError(absl::StrFormat(
-          "getInstruction failed at binary address 0x%lx", binary_address));
+      return absl::FailedPreconditionError(
+          llvm::formatv("getInstruction failed at binary address {0:x}",
+                        binary_address)
+              .str());
     }
     return inst;
   }
-  return absl::FailedPreconditionError(absl::StrFormat(
-      "no section containing address 0x%lx found", binary_address));
+  return absl::FailedPreconditionError(
+      llvm::formatv("no section containing address {0:x} found", binary_address)
+          .str());
 }
 
 bool MiniDisassembler::MayAffectControlFlow(const llvm::MCInst& inst) {

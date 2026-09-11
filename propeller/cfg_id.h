@@ -21,7 +21,6 @@
 #include <tuple>
 #include <utility>
 
-#include "absl/strings/str_format.h"
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -54,8 +53,10 @@ struct IntraCfgId {
   // TODO(b/545770511): Remove once all callers are migrated to LLVM utilities.
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const IntraCfgId& id) {
-    absl::Format(&sink, "[BB index: %d, clone number: %v]", id.bb_index,
-                 id.clone_number);
+    std::string s;
+    llvm::raw_string_ostream os(s);
+    id.print(os);
+    sink.Append(os.str());
   }
   template <typename Stream>
   void print(Stream& os) const {
@@ -123,8 +124,10 @@ struct InterCfgId {
   // TODO(b/545770511): Remove once all callers are migrated to LLVM utilities.
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const InterCfgId& id) {
-    absl::Format(&sink, "[function index: %d, %v]", id.function_index,
-                 id.intra_cfg_id);
+    std::string s;
+    llvm::raw_string_ostream os(s);
+    id.print(os);
+    sink.Append(os.str());
   }
   template <typename Stream>
   void print(Stream& os) const {

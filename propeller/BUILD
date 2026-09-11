@@ -47,7 +47,7 @@ exports_files(["LICENSE"])
 cc_library(
     name = "binary_address_branch",
     hdrs = ["binary_address_branch.h"],
-    deps = ["@abseil-cpp//absl/strings:str_format"],
+    deps = ["@llvm-project//llvm:Support"],
 )
 
 cc_library(
@@ -235,7 +235,6 @@ cc_library(
     name = "bb_handle",
     hdrs = ["bb_handle.h"],
     deps = [
-        "@abseil-cpp//absl/strings:str_format",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -305,11 +304,7 @@ cc_library(
     hdrs = [
         "cfg_id.h",
     ],
-    deps = [
-        "@abseil-cpp//absl/strings",
-        "@abseil-cpp//absl/strings:str_format",
-        "@llvm-project//llvm:Support",
-    ],
+    deps = ["@llvm-project//llvm:Support"],
 )
 
 cc_library(
@@ -374,7 +369,6 @@ cc_library(
         ":cfg_edge_kind",
         "@abseil-cpp//absl/log",
         "@abseil-cpp//absl/log:check",
-        "@abseil-cpp//absl/strings",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -389,7 +383,6 @@ cc_library(
         ":cfg_id",
         "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/functional:function_ref",
-        "@abseil-cpp//absl/strings",
         "@llvm-project//llvm:Object",
         "@llvm-project//llvm:Support",
     ],
@@ -416,7 +409,6 @@ cc_library(
         "@abseil-cpp//absl/functional:function_ref",
         "@abseil-cpp//absl/log",
         "@abseil-cpp//absl/log:check",
-        "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/types:span",
         "@llvm-project//llvm:Support",
     ],
@@ -465,8 +457,6 @@ cc_library(
         ":chain_merge_order",
         "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/container:flat_hash_map",
-        "@abseil-cpp//absl/strings",
-        "@abseil-cpp//absl/strings:str_format",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -485,8 +475,6 @@ cc_library(
     hdrs = ["binary_address_branch_path.h"],
     deps = [
         ":binary_address_branch",
-        "@abseil-cpp//absl/strings",
-        "@abseil-cpp//absl/strings:str_format",
         "@abseil-cpp//absl/time",
         "@llvm-project//llvm:Support",
     ],
@@ -715,7 +703,6 @@ cc_library(
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/strings",
-        "@abseil-cpp//absl/strings:str_format",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -732,7 +719,6 @@ cc_library(
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
         "@abseil-cpp//absl/strings",
-        "@abseil-cpp//absl/strings:str_format",
         "@llvm-project//llvm:AllTargetsAsmParsers",  # buildcleaner: keep
         "@llvm-project//llvm:AllTargetsDisassemblers",  # buildcleaner: keep
         "@llvm-project//llvm:MC",
@@ -1164,7 +1150,6 @@ cc_library(
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
-        "@abseil-cpp//absl/strings:str_format",
         "@com_google_protobuf//:protobuf",
         "@llvm-project//llvm:Object",
         "@llvm-project//llvm:Support",

@@ -144,28 +144,30 @@ struct CfgChangeFromPathCloning {
   template <typename Sink>
   friend void AbslStringify(Sink& sink,
                             const CfgChangeFromPathCloning& change) {
-    absl::Format(
-        &sink,
-        "path_pred: %d, path_to_clone: [%s], paths_to_drop: [%s], "
-        "intra_reroutes: [%s], inter_reroutes: [%s]",
-        change.path_pred_bb_index,
-        llvm::join(llvm::map_range(change.path_to_clone,
-                                   [](int bb) { return std::to_string(bb); }),
-                   ", "),
-        llvm::join(llvm::map_range(change.paths_to_drop,
-                                   [](const PathNode* p) {
-                                     return FormatPathFromRoot(
-                                         p->path_from_root());
-                                   }),
-                   ", "),
-        llvm::join(
-            llvm::map_range(change.intra_edge_reroutes,
-                            [](const auto& r) { return r.DebugString(); }),
-            ", "),
-        llvm::join(
-            llvm::map_range(change.inter_edge_reroutes,
-                            [](const auto& r) { return r.DebugString(); }),
-            ", "));
+    sink.Append(
+        llvm::formatv(
+            "path_pred: {0}, path_to_clone: [{1}], paths_to_drop: [{2}], "
+            "intra_reroutes: [{3}], inter_reroutes: [{4}]",
+            change.path_pred_bb_index,
+            llvm::join(
+                llvm::map_range(change.path_to_clone,
+                                [](int bb) { return std::to_string(bb); }),
+                ", "),
+            llvm::join(llvm::map_range(change.paths_to_drop,
+                                       [](const PathNode* p) {
+                                         return FormatPathFromRoot(
+                                             p->path_from_root());
+                                       }),
+                       ", "),
+            llvm::join(
+                llvm::map_range(change.intra_edge_reroutes,
+                                [](const auto& r) { return r.DebugString(); }),
+                ", "),
+            llvm::join(
+                llvm::map_range(change.inter_edge_reroutes,
+                                [](const auto& r) { return r.DebugString(); }),
+                ", "))
+            .str());
   }
 };
 
@@ -514,22 +516,27 @@ class CfgBuilder {
 
 template <typename Sink>
 inline void AbslStringify(Sink& sink, const ControlFlowGraph& cfg) {
-  absl::Format(&sink,
-               "CFG for function_name: {%s}, function_index: %d, module: %s, "
-               "section: %s",
-               llvm::join(cfg.names(), ", "), cfg.function_index(),
-               cfg.module_name().value_or(""), cfg.section_name());
-  absl::Format(&sink, "\n  nodes:");
+  sink.Append(
+      llvm::formatv(
+          "CFG for function_name: {{{0}}, function_index: {1}, module: {2}, "
+          "section: {3}",
+          llvm::join(cfg.names(), ", "), cfg.function_index(),
+          cfg.module_name().value_or(""), cfg.section_name())
+          .str());
+  sink.Append("\n  nodes:");
   for (const auto& node : cfg.nodes()) {
-    absl::Format(&sink, "\n    %v", *node);
+    sink.Append("\n    ");
+    AbslStringify(sink, *node);
   }
-  absl::Format(&sink, "\n  intra edges:");
+  sink.Append("\n  intra edges:");
   for (const auto& edge : cfg.intra_edges()) {
-    absl::Format(&sink, "\n    %v", *edge);
+    sink.Append("\n    ");
+    AbslStringify(sink, *edge);
   }
-  absl::Format(&sink, "\n  inter edges:");
+  sink.Append("\n  inter edges:");
   for (const auto& edge : cfg.inter_edges()) {
-    absl::Format(&sink, "\n    %v", *edge);
+    sink.Append("\n    ");
+    AbslStringify(sink, *edge);
   }
 }
 }  // namespace propeller

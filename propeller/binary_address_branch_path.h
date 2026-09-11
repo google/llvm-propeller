@@ -18,10 +18,10 @@
 #include <cstdint>
 #include <vector>
 
-#include "absl/strings/str_format.h"
 #include "absl/time/time.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "propeller/binary_address_branch.h"
 
 namespace propeller {
@@ -33,13 +33,17 @@ struct BinaryAddressBranchPath {
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const BinaryAddressBranchPath& path) {
-    absl::Format(&sink, "BinaryAddressBranchPath[pid:%lld, branches:%s]",
-                 path.pid,
-                 llvm::join(llvm::map_range(path.branches,
-                                            [](const BinaryAddressBranch& b) {
-                                              return absl::StrFormat("%v", b);
-                                            }),
-                            ", "));
+    sink.Append(llvm::formatv(
+                    "BinaryAddressBranchPath[pid:{0}, branches:{1}]", path.pid,
+                    llvm::join(llvm::map_range(
+                                   path.branches,
+                                   [](const BinaryAddressBranch& b) {
+                                     return llvm::formatv("{0:x16}->{1:x16}",
+                                                          b.from, b.to)
+                                         .str();
+                                   }),
+                               ", "))
+                    .str());
   }
 };
 }  // namespace propeller

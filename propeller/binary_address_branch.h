@@ -19,7 +19,7 @@
 #include <tuple>
 #include <utility>
 
-#include "absl/strings/str_format.h"
+#include "llvm/Support/FormatVariadic.h"
 
 namespace propeller {
 // `BinaryAddressBranch` represents a taken branch with endpoints specified as
@@ -40,7 +40,7 @@ struct BinaryAddressBranch {
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const BinaryAddressBranch& b) {
-    absl::Format(&sink, "0x%016x->0x%016x", b.from, b.to);
+    sink.Append(llvm::formatv("{0:x16}->{1:x16}", b.from, b.to).str());
   }
 };
 
@@ -61,7 +61,7 @@ struct BinaryAddressNotTakenBranch {
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const BinaryAddressNotTakenBranch& b) {
-    absl::Format(&sink, "0x%016x", b.address);
+    sink.Append(llvm::formatv("{0:x16}", b.address).str());
   }
 };
 
@@ -80,7 +80,7 @@ struct BinaryAddressFallthrough {
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const BinaryAddressFallthrough& f) {
-    absl::Format(&sink, "0x%016x->0x%016x", f.from, f.to);
+    sink.Append(llvm::formatv("{0:x16}->{1:x16}", f.from, f.to).str());
   }
 };
 

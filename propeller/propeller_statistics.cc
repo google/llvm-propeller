@@ -19,7 +19,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_format.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -53,27 +52,35 @@ std::string PropellerStats::CodeLayoutStats::DebugString() const {
                     "multi-node chains: [{1}]",
                     n_single_node_chains, n_multi_node_chains)
           .str(),
-      absl::StrFormat(
-          "Changed inter-function (ext-tsp) score by %+.1f%% from %f to %f.",
+      llvm::formatv(
+          "Changed inter-function (ext-tsp) score by {0}{1:F1}% from {2:F6} to "
+          "{3:F6}.",
+          inter_score_percent_change >= 0 ? "+" : "",
           inter_score_percent_change, original_inter_score,
-          optimized_inter_score),
-      absl::StrFormat(
-          "Changed intra-function (ext-tsp) score by %+.1f%% from %f to %f",
+          optimized_inter_score)
+          .str(),
+      llvm::formatv(
+          "Changed intra-function (ext-tsp) score by {0}{1:F1}% from {2:F6} to "
+          "{3:F6}",
+          intra_score_percent_change >= 0 ? "+" : "",
           intra_score_percent_change, original_intra_score,
-          optimized_intra_score));
+          optimized_intra_score)
+          .str());
 }
 
 std::string PropellerStats::DisassemblyStats::Stat::DebugString() const {
-  return absl::StrFormat("absolute: %d / weighted: %d", absolute, weighted);
+  return llvm::formatv("absolute: {0} / weighted: {1}", absolute, weighted)
+      .str();
 }
 
 std::string PropellerStats::DisassemblyStats::DebugString() const {
-  return absl::StrFormat(
-      "Disassembly stats:\nCould not disassemble: %s\nMay affect control flow: "
-      "%s\nCan not affect control flow: %s",
-      could_not_disassemble.DebugString(),
-      may_affect_control_flow.DebugString(),
-      cant_affect_control_flow.DebugString());
+  return llvm::formatv(
+             "Disassembly stats:\nCould not disassemble: {0}\nMay affect "
+             "control flow: {1}\nCan not affect control flow: {2}",
+             could_not_disassemble.DebugString(),
+             may_affect_control_flow.DebugString(),
+             cant_affect_control_flow.DebugString())
+      .str();
 }
 
 std::string PropellerStats::ProfileStats::DebugString() const {
@@ -104,9 +111,11 @@ std::string PropellerStats::CfgStats::DebugString() const {
                          edges_created_by_kind,
                          [edges_created](
                              const std::pair<CFGEdgeKind, int64_t>& entry) {
-                           return absl::StrFormat(
-                               "%s: %.2f%%", GetCfgEdgeKindString(entry.first),
-                               entry.second * 100.0 / edges_created);
+                           return llvm::formatv(
+                                      "{0}: {1:F2}%",
+                                      GetCfgEdgeKindString(entry.first),
+                                      entry.second * 100.0 / edges_created)
+                               .str();
                          }),
                      ", "))
           .str(),
@@ -116,9 +125,11 @@ std::string PropellerStats::CfgStats::DebugString() const {
                          total_edge_weight_by_kind,
                          [total_edge_weight](
                              const std::pair<CFGEdgeKind, int64_t>& entry) {
-                           return absl::StrFormat(
-                               "%s: %.2f%%", GetCfgEdgeKindString(entry.first),
-                               entry.second * 100.0 / total_edge_weight);
+                           return llvm::formatv(
+                                      "{0}: {1:F2}%",
+                                      GetCfgEdgeKindString(entry.first),
+                                      entry.second * 100.0 / total_edge_weight)
+                               .str();
                          }),
                      ", "))
           .str()};

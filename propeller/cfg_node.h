@@ -24,6 +24,8 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Object/ELFTypes.h"
+#include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/raw_ostream.h"
 #include "propeller/cfg_edge.h"
 #include "propeller/cfg_edge_kind.h"
 #include "propeller/cfg_id.h"
@@ -162,15 +164,22 @@ class CFGNode final {
 
 template <typename Sink>
 inline void AbslStringify(Sink& sink, const CFGNode& node) {
-  absl::Format(&sink, "[id: %v, addr:%llu size: %d]", node.inter_cfg_id_,
-               node.addr_, node.size_);
+  std::string id_str;
+  llvm::raw_string_ostream os(id_str);
+  node.inter_cfg_id_.print(os);
+  sink.Append(llvm::formatv("[id: {0}, addr:{1} size: {2}]", os.str(),
+                            node.addr_, node.size_)
+                  .str());
 }
 
 template <typename Sink>
 inline void AbslStringify(Sink& sink, const CFGEdge& edge) {
-  absl::Format(&sink, "[%s -> %s, weight(%lld), type(%s), inter-section(%d)]",
-               edge.src()->GetName(), edge.sink()->GetName(), edge.weight(),
-               GetCfgEdgeKindString(edge.kind()), edge.inter_section());
+  sink.Append(
+      llvm::formatv("[{0} -> {1}, weight({2}), type({3}), inter-section({4})]",
+                    edge.src()->GetName(), edge.sink()->GetName(),
+                    edge.weight(), GetCfgEdgeKindString(edge.kind()),
+                    edge.inter_section() ? 1 : 0)
+          .str());
 }
 
 }  // namespace propeller

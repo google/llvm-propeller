@@ -17,9 +17,9 @@
 
 #include <optional>
 #include <ostream>
+#include <string>
 #include <utility>
 
-#include "absl/strings/str_format.h"
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/Support/raw_ostream.h"
@@ -55,8 +55,10 @@ struct FlatBbHandle {
   // TODO(b/545770511): Remove once all callers are migrated to LLVM utilities.
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const FlatBbHandle& bb_handle) {
-    absl::Format(&sink, "%d#%d", bb_handle.function_index,
-                 bb_handle.flat_bb_index);
+    std::string s;
+    llvm::raw_string_ostream os(s);
+    bb_handle.print(os);
+    sink.Append(os.str());
   }
 
   // TODO(b/545770511): Remove once all callers are migrated to LLVM utilities.
@@ -64,9 +66,9 @@ struct FlatBbHandle {
   friend void AbslStringify(Sink& sink,
                             const std::optional<FlatBbHandle>& bb_handle) {
     if (bb_handle.has_value()) {
-      absl::Format(&sink, "%v", *bb_handle);
+      AbslStringify(sink, *bb_handle);
     } else {
-      absl::Format(&sink, "%s", "unknown");
+      sink.Append("unknown");
     }
   }
 
@@ -118,8 +120,10 @@ struct BbHandle {
   // TODO(b/545770511): Remove once all callers are migrated to LLVM utilities.
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const BbHandle& bb_handle) {
-    absl::Format(&sink, "%d#%d#%d", bb_handle.function_index,
-                 bb_handle.range_index, bb_handle.bb_index);
+    std::string s;
+    llvm::raw_string_ostream os(s);
+    bb_handle.print(os);
+    sink.Append(os.str());
   }
 
   // TODO(b/545770511): Remove once all callers are migrated to LLVM utilities.
@@ -127,9 +131,9 @@ struct BbHandle {
   friend void AbslStringify(Sink& sink,
                             const std::optional<BbHandle>& bb_handle) {
     if (bb_handle.has_value()) {
-      absl::Format(&sink, "%v", *bb_handle);
+      AbslStringify(sink, *bb_handle);
     } else {
-      absl::Format(&sink, "%s", "unknown");
+      sink.Append("unknown");
     }
   }
 
@@ -182,13 +186,10 @@ struct CallRetInfo {
   // TODO(b/545770511): Remove once all callers are migrated to LLVM utilities.
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const CallRetInfo& call_ret) {
-    absl::Format(&sink, "call:");
-    if (call_ret.callee.has_value()) {
-      absl::Format(&sink, "%d", *call_ret.callee);
-    } else {
-      absl::Format(&sink, "unknown");
-    }
-    absl::Format(&sink, "#ret:%v", call_ret.return_bb);
+    std::string s;
+    llvm::raw_string_ostream os(s);
+    call_ret.print(os);
+    sink.Append(os.str());
   }
 
   template <typename Stream>

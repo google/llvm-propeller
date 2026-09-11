@@ -44,7 +44,9 @@ class PerfDataProvider {
 
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const BufferHandle& handle) {
-      absl::Format(&sink, "[%s]", handle.description);
+      sink.Append("[");
+      sink.Append(handle.description);
+      sink.Append("]");
     }
   };
 
