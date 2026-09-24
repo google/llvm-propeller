@@ -18,9 +18,9 @@
 
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
-#include "absl/strings/string_view.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "propeller/status_testing_macros.h"
 
@@ -36,7 +36,7 @@ MATCHER_P2(CodePrefetchDirectiveEq, site, target, "") {
   return arg.prefetch_site == site && arg.prefetch_target == target;
 }
 
-std::string GetTestDataPath(absl::string_view filename) {
+std::string GetTestDataPath(llvm::StringRef filename) {
   return (llvm::Twine(::testing::SrcDir()) +
           "_main/propeller/testdata/prefetch_parsing/" + filename)
       .str();

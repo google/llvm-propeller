@@ -24,9 +24,9 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "propeller/bb_addr_map.pb.h"
 #include "propeller/file_helpers.h"
@@ -72,7 +72,7 @@ struct GeneratePropellerProfileTestCase {
   bool ignore_extra_lines_in_cc_profile = true;
 };
 
-PropellerOptions GetOptionsWithPrefetchPath(absl::string_view prefetch_path) {
+PropellerOptions GetOptionsWithPrefetchPath(llvm::StringRef prefetch_path) {
   PropellerOptions options;
   options.set_prefetch_directives_path(prefetch_path);
   return options;

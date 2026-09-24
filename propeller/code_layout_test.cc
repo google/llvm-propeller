@@ -28,10 +28,10 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "propeller/cfg.h"
 #include "propeller/cfg_edge.h"
@@ -89,7 +89,7 @@ MATCHER_P(HasIntraChainEdges, intra_chain_out_edges_matcher,
                             arg.intra_chain_out_edges(), result_listener);
 }
 
-std::string GetTestInputPath(absl::string_view testdata_path) {
+std::string GetTestInputPath(llvm::StringRef testdata_path) {
   return (llvm::Twine(::testing::SrcDir()) + testdata_path).str();
 }
 

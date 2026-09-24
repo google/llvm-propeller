@@ -25,9 +25,9 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
 #include "llvm/Object/ObjectFile.h"
@@ -44,7 +44,7 @@ using ::propeller::Addr2Cu;
 using ::propeller::CreateDWARFContext;
 using ::testing::HasSubstr;
 
-uint64_t GetSymbolAddress(const std::string& symmap, absl::string_view symbol) {
+uint64_t GetSymbolAddress(const std::string& symmap, llvm::StringRef symbol) {
   std::ifstream fin(symmap.c_str());
   int64_t addr;
   std::string sym_type;
@@ -60,7 +60,7 @@ struct BinaryData {
 };
 
 // Primes `BinaryData` for test cases.
-absl::StatusOr<BinaryData> SetupBinaryData(absl::string_view binary) {
+absl::StatusOr<BinaryData> SetupBinaryData(llvm::StringRef binary) {
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> mem_buf =
       llvm::MemoryBuffer::getFile(binary);
   if (!mem_buf) {

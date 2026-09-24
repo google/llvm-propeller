@@ -24,7 +24,6 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -80,7 +79,7 @@ MATCHER_P4(BbEntryIs, id_matcher, offset_matcher, size_matcher,
          ExplainMatchResult(metadata_matcher, arg.MD, result_listener);
 }
 
-std::string GetPropellerTestDataFilePath(absl::string_view filename) {
+std::string GetPropellerTestDataFilePath(llvm::StringRef filename) {
   const std::string testdata_filepath = (llvm::Twine(::testing::SrcDir()) +
                                          "_main/propeller/testdata/" + filename)
                                             .str();

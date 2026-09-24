@@ -1008,8 +1008,8 @@ cc_library(
     hdrs = ["text_proto_flag.h"],
     deps = [
         "@abseil-cpp//absl/log:check",
-        "@abseil-cpp//absl/strings:string_view",
         "@com_google_protobuf//:protobuf",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1028,8 +1028,6 @@ cc_binary(
         "@abseil-cpp//absl/flags:parse",
         "@abseil-cpp//absl/flags:usage",
         "@abseil-cpp//absl/log:check",
-        "@abseil-cpp//absl/strings",
-        "@abseil-cpp//absl/strings:string_view",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -1043,8 +1041,8 @@ cc_library(
     hdrs = ["parse_text_proto.h"],
     deps = [
         "@abseil-cpp//absl/log:absl_check",
-        "@abseil-cpp//absl/strings:string_view",
         "@com_google_protobuf//:protobuf",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -1216,8 +1214,6 @@ cc_test(
         ":status_testing_macros",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:status_matchers",
-        "@abseil-cpp//absl/strings",
-        "@abseil-cpp//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
     ],
@@ -1262,7 +1258,6 @@ cc_test(
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:status_matchers",
         "@abseil-cpp//absl/status:statusor",
-        "@abseil-cpp//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:DebugInfoDWARF",
         "@llvm-project//llvm:Object",
@@ -1326,7 +1321,6 @@ cc_test(
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:status_matchers",
-        "@abseil-cpp//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
     ],
@@ -1406,7 +1400,6 @@ cc_test(
         ":status_testing_macros",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/container:flat_hash_set",
-        "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/time",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Object",
@@ -1514,7 +1507,6 @@ cc_test(
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:status_matchers",
         "@abseil-cpp//absl/status:statusor",
-        "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
@@ -1714,7 +1706,6 @@ cc_test(
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:status_matchers",
         "@abseil-cpp//absl/status:statusor",
-        "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
@@ -1766,7 +1757,6 @@ cc_test(
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:status_matchers",
         "@abseil-cpp//absl/status:statusor",
-        "@abseil-cpp//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
     ],

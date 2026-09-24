@@ -28,10 +28,10 @@
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "propeller/binary_address_mapper.h"
@@ -96,7 +96,7 @@ MATCHER_P(SectionProfileInfoSizeIs, size, "") {
                             result_listener);
 }
 
-static std::string GetPropellerTestDataFilePath(absl::string_view filename) {
+static std::string GetPropellerTestDataFilePath(llvm::StringRef filename) {
   return (llvm::Twine(::testing::SrcDir()) + "_main/propeller/testdata/" +
           filename)
       .str();

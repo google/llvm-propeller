@@ -22,9 +22,9 @@
 
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "propeller/binary_address_mapper.h"
 #include "propeller/binary_content.h"
@@ -42,7 +42,7 @@ using ::testing::_;
 using ::testing::Optional;
 using ::testing::SizeIs;
 
-static std::string GetPropellerTestDataFilePath(absl::string_view filename) {
+static std::string GetPropellerTestDataFilePath(llvm::StringRef filename) {
   return (llvm::Twine(::testing::SrcDir()) + "_main/propeller/testdata/" +
           filename)
       .str();

@@ -18,14 +18,13 @@
 #include <ios>
 #include <optional>
 #include <string>
-#include <string_view>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
-#include "absl/strings/string_view.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "propeller/status_testing_macros.h"
 
@@ -43,18 +42,17 @@ using ::testing::Optional;
 
 MATCHER_P(BufferIs, contents_matcher,
           (llvm::Twine("an llvm::MemoryBuffer that ") +
-           testing::DescribeMatcher<absl::string_view>(contents_matcher,
-                                                       negation))
+           testing::DescribeMatcher<llvm::StringRef>(contents_matcher,
+                                                     negation))
               .str()) {
-  return testing::ExplainMatchResult(
-      contents_matcher, absl::string_view(std::string_view(arg->getBuffer())),
-      result_listener);
+  return testing::ExplainMatchResult(contents_matcher, arg->getBuffer(),
+                                     result_listener);
 }
 
 // Writes `contents` to file named `file_name`.
-void WriteFile(absl::string_view file_name, absl::string_view contents) {
+void WriteFile(llvm::StringRef file_name, llvm::StringRef contents) {
   std::ofstream stream(std::string{file_name}, std::ios::binary);
-  stream << contents;
+  stream << contents.str();
   CHECK(!stream.fail());
 }
 
