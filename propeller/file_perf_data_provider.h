@@ -24,7 +24,7 @@
 #include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -41,7 +41,7 @@ class FileReader {
   // Reads and returns the content of the file specified with the path
   // `file_name`.
   virtual absl::StatusOr<std::unique_ptr<llvm::MemoryBuffer>> ReadFile(
-      absl::string_view file_name) = 0;
+      llvm::StringRef file_name) = 0;
 };
 
 // Generic file reader using LLVM MemoryBuffer API.
@@ -54,7 +54,7 @@ class GenericFileReader : public FileReader {
   GenericFileReader& operator=(GenericFileReader&&) = default;
 
   absl::StatusOr<std::unique_ptr<llvm::MemoryBuffer>> ReadFile(
-      absl::string_view file_name) override {
+      llvm::StringRef file_name) override {
     llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> perf_file_content =
         llvm::MemoryBuffer::getFile(file_name, /*IsText=*/false,
                                     /*RequiresNullTerminator=*/false,

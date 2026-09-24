@@ -22,9 +22,9 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "propeller/status_testing_macros.h"
 
@@ -42,7 +42,7 @@ using ::testing::Pair;
 using ::testing::SizeIs;
 
 // google3-only(Using a constant makes path translation easier for Copybara.)
-constexpr absl::string_view kTestDataDir = "_main/propeller/testdata/";
+constexpr llvm::StringRef kTestDataDir = "_main/propeller/testdata/";
 
 TEST(BinaryContentTest, BuildId) {
   const std::string binary = (llvm::Twine(::testing::SrcDir()) + kTestDataDir +

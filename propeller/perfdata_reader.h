@@ -27,8 +27,8 @@
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "propeller/binary_content.h"
 #include "propeller/branch_frequencies.h"
@@ -44,7 +44,7 @@ namespace propeller {
 // offset and file name.
 struct MMapEntry {
   MMapEntry(uint32_t pid, uint64_t addr, uint64_t size, uint64_t pgoff,
-            absl::string_view fn)
+            llvm::StringRef fn)
       : pid(pid),
         load_addr(addr),
         load_size(size),
@@ -85,7 +85,7 @@ using BinaryMMaps = std::map<uint32_t, std::set<MMapEntry>>;
 // Returns the set of file names with profiles in `perf_reader` with build IDs
 // matching `build_id`.
 absl::StatusOr<absl::flat_hash_set<std::string>> GetBuildIdNames(
-    const quipper::PerfReader& perf_reader, absl::string_view build_id);
+    const quipper::PerfReader& perf_reader, llvm::StringRef build_id);
 
 // Selects mmap events from perfdata file by comparing the mmap event's
 // filename against "match_mmap_names".
@@ -105,7 +105,7 @@ absl::StatusOr<absl::flat_hash_set<std::string>> GetBuildIdNames(
 // build-id name, if the build id is present. Otherwise, it fails.
 absl::StatusOr<BinaryMMaps> SelectMMaps(
     PerfDataProvider::BufferHandle& perf_data,
-    absl::Span<const absl::string_view> match_mmap_names,
+    absl::Span<const llvm::StringRef> match_mmap_names,
     const BinaryContent& binary_content);
 
 class PerfDataReader {
@@ -180,7 +180,7 @@ class PerfDataReader {
 // constructed object.
 absl::StatusOr<PerfDataReader> BuildPerfDataReader(
     PerfDataProvider::BufferHandle perf_data,
-    const BinaryContent* binary_content, absl::string_view match_mmap_name);
+    const BinaryContent* binary_content, llvm::StringRef match_mmap_name);
 
 }  // namespace propeller
 

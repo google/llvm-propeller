@@ -28,7 +28,6 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
@@ -51,7 +50,7 @@
 namespace {
 
 // Convert binary data stored in data[...] into text representation.
-std::string BinaryDataToAscii(absl::string_view data) {
+std::string BinaryDataToAscii(llvm::StringRef data) {
   std::string ascii(data.size() * 2, 0);
   const char heximal[] = "0123456789abcdef";
   for (int i = 0; i < data.size(); ++i) {
@@ -106,7 +105,7 @@ struct MMapSelector {
 };
 
 absl::StatusOr<absl::flat_hash_set<std::string>> GetBuildIdNames(
-    const quipper::PerfReader& perf_reader, absl::string_view build_id) {
+    const quipper::PerfReader& perf_reader, llvm::StringRef build_id) {
   absl::flat_hash_set<std::string> build_id_names;
   std::vector<std::pair<std::string, std::string>> existing_build_ids;
   for (const auto& build_id_entry : perf_reader.build_ids()) {
@@ -182,7 +181,7 @@ FindFileNameInPerfDataWithFileBuildId(const quipper::PerfReader& perf_reader,
 //    the perf.data mmap is selected using match_mmap_name
 absl::StatusOr<BinaryMMaps> SelectMMaps(
     PerfDataProvider::BufferHandle& perf_data,
-    absl::Span<const absl::string_view> match_mmap_names,
+    absl::Span<const llvm::StringRef> match_mmap_names,
     const BinaryContent& binary_content) {
   quipper::PerfReader perf_reader;
   // Ignore SAMPLE events for now to reduce memory usage. They will be needed
@@ -496,7 +495,7 @@ std::optional<uint32_t> PerfDataReader::GetPid(
 
 absl::StatusOr<PerfDataReader> BuildPerfDataReader(
     PerfDataProvider::BufferHandle perf_data,
-    const BinaryContent* binary_content, absl::string_view match_mmap_name) {
+    const BinaryContent* binary_content, llvm::StringRef match_mmap_name) {
   auto match_mmap_names = absl::MakeConstSpan(
       &match_mmap_name, /*size=*/match_mmap_name.empty() ? 0 : 1);
 
