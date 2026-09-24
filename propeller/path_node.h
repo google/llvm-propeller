@@ -30,11 +30,11 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
-#include "absl/strings/str_format.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "propeller/bb_handle.h"
 
 namespace propeller {
@@ -64,26 +64,35 @@ struct PathPredInfoEntry {
 
 template <typename Sink>
 void AbslStringify(Sink& sink, const PathPredInfoEntry& e) {
-  absl::Format(&sink, "  frequency: {%d}\n", e.freq);
-  absl::Format(&sink, "  cache pressure: {%f}\n", e.cache_pressure);
+  sink.Append(llvm::formatv("  frequency: {{{0}}\n", e.freq).str());
+  sink.Append(
+      llvm::formatv("  cache pressure: {{{0:F6}}\n", e.cache_pressure).str());
 
   if (!e.call_freqs.empty()) {
-    absl::Format(&sink, "  call frequencies: {%s}\n",
-                 llvm::join(llvm::map_range(e.call_freqs,
-                                            [](const auto& p) {
-                                              return absl::StrFormat(
-                                                  "%v:%v", p.first, p.second);
-                                            }),
-                            ", "));
+    sink.Append(llvm::formatv("  call frequencies: {{{0}}\n",
+                              llvm::join(llvm::map_range(e.call_freqs,
+                                                         [](const auto& p) {
+                                                           return llvm::formatv(
+                                                                      "{0}:{1}",
+                                                                      p.first,
+                                                                      p.second)
+                                                               .str();
+                                                         }),
+                                         ", "))
+                    .str());
   }
   if (!e.return_to_freqs.empty()) {
-    absl::Format(&sink, "  return frequencies: {%s}\n",
-                 llvm::join(llvm::map_range(e.return_to_freqs,
-                                            [](const auto& p) {
-                                              return absl::StrFormat(
-                                                  "%v:%v", p.first, p.second);
-                                            }),
-                            ", "));
+    sink.Append(llvm::formatv("  return frequencies: {{{0}}\n",
+                              llvm::join(llvm::map_range(e.return_to_freqs,
+                                                         [](const auto& p) {
+                                                           return llvm::formatv(
+                                                                      "{0}:{1}",
+                                                                      p.first,
+                                                                      p.second)
+                                                               .str();
+                                                         }),
+                                         ", "))
+                    .str());
   }
 }
 
@@ -132,16 +141,17 @@ struct PathPredInfo {
 
 template <typename Sink>
 void AbslStringify(Sink& sink, const PathPredInfo& p) {
-  absl::Format(&sink, "path predecessor info entries: {%v}\n",
-               llvm::join(llvm::map_range(p.entries,
-                                          [](const auto& entry) {
-                                            return absl::StrFormat(
-                                                "%v:%v", entry.first,
-                                                entry.second);
-                                          }),
-                          ", "));
-  absl::Format(&sink, "missing path predecessor info: {%v}\n",
-               p.missing_pred_entry);
+  sink.Append("path predecessor info entries: {");
+  bool first = true;
+  for (const auto& [pred_bb, entry] : p.entries) {
+    if (!first) sink.Append(", ");
+    first = false;
+    sink.Append(llvm::formatv("{0}:", pred_bb).str());
+    AbslStringify(sink, entry);
+  }
+  sink.Append("}\nmissing path predecessor info: {");
+  AbslStringify(sink, p.missing_pred_entry);
+  sink.Append("}\n");
 }
 
 struct PathNodeArg {
@@ -327,15 +337,18 @@ void AbslStringify(Sink& sink, std::vector<const PathNode*> path_from_root) {
 
 template <typename Sink>
 void AbslStringify(Sink& sink, const PathNode& path_node) {
-  absl::Format(&sink, "\n");
-  absl::Format(&sink, "{ path node for block #%d\n  path from root: %v\n",
-               path_node.node_bb_index(), path_node.path_from_root());
-  absl::Format(&sink, "  path predecessor info: {%v}\n",
-               path_node.path_pred_info());
-  absl::Format(&sink, "  children: {");
+  sink.Append("\n");
+  sink.Append(
+      llvm::formatv("{{ path node for block #{0}\n  path from root: {1}\n",
+                    path_node.node_bb_index(),
+                    FormatPathFromRoot(path_node.path_from_root()))
+          .str());
+  sink.Append("  path predecessor info: {");
+  AbslStringify(sink, path_node.path_pred_info());
+  sink.Append("}\n  children: {");
   for (const auto& [child_node_bb_index, child] : path_node.children())
-    absl::Format(&sink, "%v", *child);
-  absl::Format(&sink, "}\n");
+    AbslStringify(sink, *child);
+  sink.Append("}\n");
 }
 
 // This struct represents a unique path cloning decision in the function
@@ -386,11 +399,13 @@ struct PathCloning {
 
 template <typename Sink>
 void AbslStringify(Sink& sink, const PathCloning& path_cloning) {
-  absl::Format(
-      &sink, "[function: %d path: %s]", path_cloning.function_index,
-      llvm::join(llvm::map_range(path_cloning.GetFullPath(),
-                                 [](int bb) { return std::to_string(bb); }),
-                 "->"));
+  sink.Append(
+      llvm::formatv(
+          "[function: {0} path: {1}]", path_cloning.function_index,
+          llvm::join(llvm::map_range(path_cloning.GetFullPath(),
+                                     [](int bb) { return std::to_string(bb); }),
+                     "->"))
+          .str());
 }
 
 // Path profile for one function.
@@ -455,11 +470,16 @@ class FunctionPathProfile {
 
 template <typename Sink>
 void AbslStringify(Sink& sink, const FunctionPathProfile& profile) {
-  absl::Format(&sink, "\n{ function index: %d\n", profile.function_index());
+  sink.Append(
+      llvm::formatv("\n{{ function index: {0}\n", profile.function_index())
+          .str());
   for (const auto& [root_bb_index, path_tree] :
        profile.path_trees_by_root_bb_index()) {
-    absl::Format(&sink, "  path tree for root block #%d: %v\n", root_bb_index,
-                 *path_tree);
+    sink.Append(
+        llvm::formatv("  path tree for root block #{0}: ", root_bb_index)
+            .str());
+    AbslStringify(sink, *path_tree);
+    sink.Append("\n");
   }
 }
 

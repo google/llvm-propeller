@@ -180,10 +180,15 @@ struct EvaluatedPathCloning {
 
 template <typename Sink>
 void AbslStringify(Sink& sink, const EvaluatedPathCloning& e) {
-  absl::Format(
-      &sink, "[cloning: %v, score: %s, cfg_change: %v]", e.path_cloning,
-      e.score.has_value() ? llvm::formatv("{0}", *e.score).str() : "nullopt",
-      e.cfg_change);
+  sink.Append("[cloning: ");
+  AbslStringify(sink, e.path_cloning);
+  sink.Append(llvm::formatv(", score: {0}, cfg_change: ",
+                            e.score.has_value()
+                                ? llvm::formatv("{0}", *e.score).str()
+                                : "nullopt")
+                  .str());
+  AbslStringify(sink, e.cfg_change);
+  sink.Append("]");
 }
 
 // Evaluates `path_cloning` for `cfg` and returns the evaluated path cloning.

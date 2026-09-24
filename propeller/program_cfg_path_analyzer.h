@@ -154,22 +154,27 @@ struct PathProbeSampleInfo {
   template <typename Sink>
   friend void AbslStringify(Sink& sink,
                             const PathProbeSampleInfo& path_probe_sample_info) {
-    absl::Format(&sink, "sample_time: %s\n",
-                 absl::FormatTime(path_probe_sample_info.sample_time));
-    absl::Format(
-        &sink, "path_probes: %s\n",
-        llvm::join(
-            llvm::map_range(path_probe_sample_info.path_probes,
-                            [](const PathProbe& probe) {
-                              return (llvm::Twine(probe.pred_node_bb_index()) +
-                                      "->" +
-                                      FormatPathFromRoot(
-                                          probe.path_node()->path_from_root()))
-                                  .str();
-                            }),
-            ","));
-    absl::Format(&sink, "path_length: %d\n",
-                 path_probe_sample_info.path_length);
+    sink.Append(
+        llvm::formatv("sample_time: {0}\n",
+                      absl::FormatTime(path_probe_sample_info.sample_time))
+            .str());
+    sink.Append(
+        llvm::formatv(
+            "path_probes: {0}\n",
+            llvm::join(llvm::map_range(
+                           path_probe_sample_info.path_probes,
+                           [](const PathProbe& probe) {
+                             return (llvm::Twine(probe.pred_node_bb_index()) +
+                                     "->" +
+                                     FormatPathFromRoot(
+                                         probe.path_node()->path_from_root()))
+                                 .str();
+                           }),
+                       ","))
+            .str());
+    sink.Append(
+        llvm::formatv("path_length: {0}\n", path_probe_sample_info.path_length)
+            .str());
   }
 };
 

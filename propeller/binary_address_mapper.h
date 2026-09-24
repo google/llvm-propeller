@@ -26,7 +26,6 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "llvm/ADT/STLExtras.h"
@@ -35,6 +34,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Object/ELFTypes.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "propeller/bb_handle.h"
 #include "propeller/binary_address_branch_path.h"
 #include "propeller/binary_content.h"
@@ -85,14 +85,19 @@ struct FlatBbHandleBranch {
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const FlatBbHandleBranch& branch) {
-    absl::Format(&sink, "%v -> %v", branch.from_bb, branch.to_bb);
+    AbslStringify(sink, branch.from_bb);
+    sink.Append(" -> ");
+    AbslStringify(sink, branch.to_bb);
     if (!branch.is_callsite()) return;
-    absl::Format(&sink, "(CALLSITES: %s)",
-                 llvm::join(llvm::map_range(branch.call_rets,
-                                            [](const auto& cr) {
-                                              return absl::StrFormat("%v", cr);
-                                            }),
-                            ","));
+    sink.Append(
+        llvm::formatv(
+            "(CALLSITES: {0})",
+            llvm::join(llvm::map_range(branch.call_rets,
+                                       [](const auto& cr) {
+                                         return llvm::formatv("{0}", cr).str();
+                                       }),
+                       ","))
+            .str());
   }
 };
 
@@ -114,17 +119,21 @@ struct FlatBbHandleBranchPath {
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const FlatBbHandleBranchPath& path) {
-    absl::Format(
-        &sink, "FlatBbHandleBranchPath[pid:%lld, sample_time:%v, branches:%s",
-        path.pid, path.sample_time,
-        llvm::join(llvm::map_range(
-                       path.branches,
-                       [](const auto& b) { return absl::StrFormat("%v", b); }),
-                   ", "));
-    if (path.returns_to.has_value()) {
-      absl::Format(&sink, ", returns_to:%v", *path.returns_to);
+    sink.Append(
+        llvm::formatv(
+            "FlatBbHandleBranchPath[pid:{0}, sample_time:{1}, branches:",
+            path.pid, absl::FormatTime(path.sample_time))
+            .str());
+    bool first = true;
+    for (const auto& b : path.branches) {
+      if (!first) sink.Append(", ");
+      first = false;
+      AbslStringify(sink, b);
     }
-    absl::Format(&sink, "]");
+    if (path.returns_to.has_value()) {
+      sink.Append(llvm::formatv(", returns_to:{0}", *path.returns_to).str());
+    }
+    sink.Append("]");
   }
 };
 
