@@ -22,13 +22,13 @@
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 
 namespace propeller_file {
 
-absl::StatusOr<std::string> GetContents(absl::string_view path) {
+absl::StatusOr<std::string> GetContents(llvm::StringRef path) {
   // Open the file in binary mode if it exists.
   std::ifstream filestream((std::string(path)), std::ios_base::binary);
   if (!filestream) {
@@ -49,7 +49,7 @@ absl::StatusOr<std::string> GetContents(absl::string_view path) {
   return stringstream.str();
 }
 
-absl::Status SetContents(absl::string_view path, absl::string_view contents) {
+absl::Status SetContents(llvm::StringRef path, llvm::StringRef contents) {
   std::ofstream filestream((std::string(path)), std::ios_base::binary);
   if (!filestream) {
     return absl::FailedPreconditionError(
@@ -58,7 +58,7 @@ absl::Status SetContents(absl::string_view path, absl::string_view contents) {
             .str());
   }
 
-  filestream << contents;
+  filestream.write(contents.data(), contents.size());
   if (filestream.fail() || filestream.bad()) {
     return absl::UnknownError(
         (llvm::Twine("Failed to write to file: ") + path).str());
@@ -67,8 +67,8 @@ absl::Status SetContents(absl::string_view path, absl::string_view contents) {
 }
 
 absl::StatusOr<std::string> GetContentsIgnoringLines(
-    absl::string_view path,
-    absl::Span<const absl::string_view> ignored_line_prefixes) {
+    llvm::StringRef path,
+    llvm::ArrayRef<llvm::StringRef> ignored_line_prefixes) {
   // Open the file in binary mode if it exists.
   std::ifstream filestream((std::string(path)), std::ios_base::binary);
   if (!filestream) {
@@ -81,10 +81,10 @@ absl::StatusOr<std::string> GetContentsIgnoringLines(
   std::string contents;
   std::string line;
   while (std::getline(filestream, line)) {
-    if (absl::c_any_of(ignored_line_prefixes,
-                       [&line](absl::string_view ignored_prefix) {
-                         return line.starts_with(ignored_prefix);
-                       })) {
+    if (absl::c_any_of(
+            ignored_line_prefixes, [&line](llvm::StringRef ignored_prefix) {
+              return llvm::StringRef(line).starts_with(ignored_prefix);
+            })) {
       continue;
     }
     contents += line;

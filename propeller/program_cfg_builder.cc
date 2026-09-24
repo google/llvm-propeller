@@ -26,7 +26,6 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Object/ELFTypes.h"
@@ -79,10 +78,10 @@ absl::StatusOr<std::unique_ptr<ProgramCfg>> ProgramCfgBuilder::Build(
 
     std::optional<llvm::StringRef> module_name = std::nullopt;
     if (addr2cu) {
-      absl::StatusOr<absl::string_view> res =
+      absl::StatusOr<llvm::StringRef> res =
           addr2cu->GetCompileUnitFileNameForCodeAddress(
               func_bb_addr_map.getFunctionAddress());
-      if (res.ok()) module_name = llvm::StringRef(res->data(), res->size());
+      if (res.ok()) module_name = *res;
     }
 
     CHECK_NE(func_bb_addr_map.getNumBBEntries(), 0);

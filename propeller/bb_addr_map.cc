@@ -26,7 +26,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ELFTypes.h"
 #include "propeller/addr2cu.h"
 #include "propeller/bb_addr_map.pb.h"
@@ -38,8 +38,8 @@ namespace propeller {
 
 namespace {
 
-std::optional<absl::string_view> GetModuleName(
-    const propeller::Addr2Cu* addr2cu, uint64_t function_address) {
+std::optional<llvm::StringRef> GetModuleName(const propeller::Addr2Cu* addr2cu,
+                                             uint64_t function_address) {
   if (addr2cu == nullptr) return std::nullopt;
   auto cu_info =
       addr2cu->GetCompileUnitFileNameForCodeAddress(function_address);

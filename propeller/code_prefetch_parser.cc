@@ -23,8 +23,8 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
-#include "absl/strings/str_split.h"
-#include "absl/strings/string_view.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/FormatVariadic.h"
 
@@ -33,7 +33,7 @@ namespace propeller {
 namespace {
 // Parses a string address, handling both hexadecimal (with "0x" prefix) and
 // decimal formats. Returns an error if the address is invalid.
-absl::StatusOr<uint64_t> ParseAddressToUint64(absl::string_view address_str) {
+absl::StatusOr<uint64_t> ParseAddressToUint64(llvm::StringRef address_str) {
   uint64_t address;
   if (address_str.starts_with("0x")) {
     if (!absl::SimpleHexAtoi(address_str, &address)) {
@@ -55,7 +55,7 @@ absl::StatusOr<uint64_t> ParseAddressToUint64(absl::string_view address_str) {
 }  // namespace
 
 absl::StatusOr<std::vector<CodePrefetchDirective>> ReadCodePrefetchDirectives(
-    absl::string_view prefetch_directives_path) {
+    llvm::StringRef prefetch_directives_path) {
   if (prefetch_directives_path.empty()) {
     return std::vector<CodePrefetchDirective>();
   }
@@ -76,7 +76,8 @@ absl::StatusOr<std::vector<CodePrefetchDirective>> ReadCodePrefetchDirectives(
     // Skip comments and empty lines.
     if (line.empty() || line[0] == '#') continue;
 
-    std::vector<std::string> addresses = absl::StrSplit(line, ',');
+    llvm::SmallVector<llvm::StringRef, 2> addresses;
+    llvm::StringRef(line).split(addresses, ',');
     if (addresses.size() != 2) {
       return absl::InvalidArgumentError(
           llvm::formatv("Invalid format in prefetch directives file at line "

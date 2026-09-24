@@ -24,7 +24,7 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/DebugInfo/DWARF/DWARFCompileUnit.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
@@ -36,7 +36,7 @@
 namespace propeller {
 
 absl::StatusOr<std::unique_ptr<llvm::DWARFContext>> CreateDWARFContext(
-    const llvm::object::ObjectFile& obj, absl::string_view dwp_file) {
+    const llvm::object::ObjectFile& obj, llvm::StringRef dwp_file) {
   std::unique_ptr<llvm::DWARFContext> dwarf_context =
       llvm::DWARFContext::create(
           obj, llvm::DWARFContext::ProcessDebugRelocations::Process,
@@ -58,7 +58,7 @@ absl::StatusOr<std::unique_ptr<llvm::DWARFContext>> CreateDWARFContext(
   return dwarf_context;
 }
 
-absl::StatusOr<absl::string_view> Addr2Cu::GetCompileUnitFileNameForCodeAddress(
+absl::StatusOr<llvm::StringRef> Addr2Cu::GetCompileUnitFileNameForCodeAddress(
     uint64_t code_address) const {
   llvm::DWARFCompileUnit* unit =
       dwarf_context_.getCompileUnitForCodeAddress(code_address);
@@ -70,7 +70,6 @@ absl::StatusOr<absl::string_view> Addr2Cu::GetCompileUnitFileNameForCodeAddress(
   llvm::DWARFDie die = unit->getNonSkeletonUnitDIE();
   std::optional<llvm::DWARFFormValue> form_value =
       die.findRecursively({llvm::dwarf::DW_AT_name});
-  llvm::StringRef name = llvm::dwarf::toStringRef(form_value, "");
-  return absl::string_view(name.data(), name.size());
+  return llvm::dwarf::toStringRef(form_value, "");
 }
 }  // namespace propeller
