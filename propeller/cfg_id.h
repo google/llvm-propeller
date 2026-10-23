@@ -151,12 +151,6 @@ struct InterCfgId {
 namespace llvm {
 template <>
 struct DenseMapInfo<propeller::IntraCfgId> {
-  static propeller::IntraCfgId getEmptyKey() {
-    return propeller::IntraCfgId{-1, -1};
-  }
-  static propeller::IntraCfgId getTombstoneKey() {
-    return propeller::IntraCfgId{-2, -2};
-  }
   static unsigned getHashValue(const propeller::IntraCfgId& val) {
     return static_cast<unsigned>(hash_value(val));
   }
@@ -168,12 +162,6 @@ struct DenseMapInfo<propeller::IntraCfgId> {
 
 template <>
 struct DenseMapInfo<propeller::InterCfgId> {
-  static propeller::InterCfgId getEmptyKey() {
-    return propeller::InterCfgId{-1, {-1, -1}};
-  }
-  static propeller::InterCfgId getTombstoneKey() {
-    return propeller::InterCfgId{-2, {-2, -2}};
-  }
   static unsigned getHashValue(const propeller::InterCfgId& val) {
     return static_cast<unsigned>(hash_value(val));
   }
