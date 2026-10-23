@@ -95,6 +95,10 @@ struct BinaryContent {
   // Only not-null when input is *.ko and `ELFFileUtil::InitializeKernelModule`
   // returns ok status.
   std::optional<KernelModule> kernel_module = std::nullopt;
+  // The virtual address of the ".text" section (or _stext symbol). Used for
+  // kernel address translation when mmap is anchored to
+  // [kernel.kallsyms]_stext.
+  std::optional<uint64_t> text_section_vaddr = std::nullopt;
 };
 
 // Utility class that wraps utility functions that need templated

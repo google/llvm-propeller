@@ -528,6 +528,20 @@ absl::StatusOr<std::unique_ptr<BinaryContent>> GetBinaryContent(
     RETURN_IF_ERROR(elf_file_util->InitializeKernelModule(*binary_content));
   }
   RETURN_IF_ERROR(elf_file_util->ReadLoadableSegments(*binary_content));
+  for (const llvm::object::SectionRef& section :
+       binary_content->object_file->sections()) {
+    llvm::Expected<llvm::StringRef> name = section.getName();
+    if (name && *name == ".text") {
+      binary_content->text_section_vaddr = section.getAddress();
+      break;
+    }
+  }
+  if (!binary_content->text_section_vaddr.has_value()) {
+    if (auto addr = GetSymbolAddress(*binary_content->object_file, "_stext");
+        addr.ok()) {
+      binary_content->text_section_vaddr = *addr;
+    }
+  }
   return binary_content;
 }
 

@@ -54,6 +54,15 @@ TEST(BinaryContentTest, BuildId) {
             "a56e4274b3adf7c87d165ca6deb66db002e72e1e");
 }
 
+TEST(BinaryContentTest, TextSectionVaddr) {
+  const std::string binary = (llvm::Twine(::testing::SrcDir()) + kTestDataDir +
+                              "llvm_function_samples.binary")
+                                 .str();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
+                       GetBinaryContent(binary));
+  EXPECT_TRUE(binary_content->text_section_vaddr.has_value());
+}
+
 TEST(BinaryContentTest, PieAndNoBuildId) {
   const std::string binary = (llvm::Twine(::testing::SrcDir()) + kTestDataDir +
                               "propeller_barebone_pie_nobuildid.bin")
