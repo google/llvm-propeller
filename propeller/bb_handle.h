@@ -227,12 +227,6 @@ struct CallRetInfo {
 namespace llvm {
 template <>
 struct DenseMapInfo<propeller::FlatBbHandle> {
-  static propeller::FlatBbHandle getEmptyKey() {
-    return propeller::FlatBbHandle{-1, -1};
-  }
-  static propeller::FlatBbHandle getTombstoneKey() {
-    return propeller::FlatBbHandle{-2, -2};
-  }
   static unsigned getHashValue(const propeller::FlatBbHandle& val) {
     return static_cast<unsigned>(hash_value(val));
   }
@@ -244,12 +238,6 @@ struct DenseMapInfo<propeller::FlatBbHandle> {
 
 template <>
 struct DenseMapInfo<propeller::BbHandle> {
-  static propeller::BbHandle getEmptyKey() {
-    return propeller::BbHandle{-1, -1, -1};
-  }
-  static propeller::BbHandle getTombstoneKey() {
-    return propeller::BbHandle{-2, -2, -2};
-  }
   static unsigned getHashValue(const propeller::BbHandle& val) {
     return static_cast<unsigned>(hash_value(val));
   }

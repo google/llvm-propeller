@@ -19,6 +19,8 @@
 #include <tuple>
 #include <utility>
 
+#include "llvm/ADT/DenseMapInfo.h"
+#include "llvm/ADT/Hashing.h"
 #include "llvm/Support/FormatVariadic.h"
 
 namespace propeller {
@@ -26,6 +28,10 @@ namespace propeller {
 // addresses in a program binary.
 struct BinaryAddressBranch {
   uint64_t from, to;
+  friend llvm::hash_code hash_value(const BinaryAddressBranch& b) {
+    return llvm::hash_combine(b.from, b.to);
+  }
+  // TODO(b/546154457): Remove once all callers are migrated to LLVM containers.
   template <typename H>
   friend H AbslHashValue(H h, const BinaryAddressBranch& b) {
     return H::combine(std::move(h), b.from, b.to);
@@ -48,6 +54,10 @@ struct BinaryAddressBranch {
 // specified as a binary address.
 struct BinaryAddressNotTakenBranch {
   uint64_t address;
+  friend llvm::hash_code hash_value(const BinaryAddressNotTakenBranch& b) {
+    return llvm::hash_value(b.address);
+  }
+  // TODO(b/546154457): Remove once all callers are migrated to LLVM containers.
   template <typename H>
   friend H AbslHashValue(H h, const BinaryAddressNotTakenBranch& b) {
     return H::combine(std::move(h), b.address);
@@ -70,6 +80,10 @@ struct BinaryAddressNotTakenBranch {
 // program binary.
 struct BinaryAddressFallthrough {
   uint64_t from, to;
+  friend llvm::hash_code hash_value(const BinaryAddressFallthrough& f) {
+    return llvm::hash_combine(f.from, f.to);
+  }
+  // TODO(b/546154457): Remove once all callers are migrated to LLVM containers.
   template <typename H>
   friend H AbslHashValue(H h, const BinaryAddressFallthrough& f) {
     return H::combine(std::move(h), f.from, f.to);
@@ -88,4 +102,40 @@ struct BinaryAddressFallthrough {
 inline constexpr uint64_t kInvalidBinaryAddress = static_cast<uint64_t>(-1);
 
 }  // namespace propeller
+
+namespace llvm {
+template <>
+struct DenseMapInfo<propeller::BinaryAddressBranch> {
+  static unsigned getHashValue(const propeller::BinaryAddressBranch& b) {
+    return static_cast<unsigned>(hash_value(b));
+  }
+  static bool isEqual(const propeller::BinaryAddressBranch& lhs,
+                      const propeller::BinaryAddressBranch& rhs) {
+    return lhs == rhs;
+  }
+};
+
+template <>
+struct DenseMapInfo<propeller::BinaryAddressNotTakenBranch> {
+  static unsigned getHashValue(
+      const propeller::BinaryAddressNotTakenBranch& b) {
+    return static_cast<unsigned>(hash_value(b));
+  }
+  static bool isEqual(const propeller::BinaryAddressNotTakenBranch& lhs,
+                      const propeller::BinaryAddressNotTakenBranch& rhs) {
+    return lhs == rhs;
+  }
+};
+
+template <>
+struct DenseMapInfo<propeller::BinaryAddressFallthrough> {
+  static unsigned getHashValue(const propeller::BinaryAddressFallthrough& f) {
+    return static_cast<unsigned>(hash_value(f));
+  }
+  static bool isEqual(const propeller::BinaryAddressFallthrough& lhs,
+                      const propeller::BinaryAddressFallthrough& rhs) {
+    return lhs == rhs;
+  }
+};
+}  // namespace llvm
 #endif  // PROPELLER_BINARY_ADDRESS_BRANCH_H_

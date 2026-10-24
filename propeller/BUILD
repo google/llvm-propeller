@@ -1266,6 +1266,17 @@ cc_test(
 )
 
 cc_test(
+    name = "binary_address_branch_test",
+    srcs = ["binary_address_branch_test.cc"],
+    deps = [
+        ":binary_address_branch",
+        ":status_testing_macros",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_test(
     name = "lazy_evaluator_test",
     srcs = ["lazy_evaluator_test.cc"],
     deps = [
