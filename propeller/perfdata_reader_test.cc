@@ -68,5 +68,41 @@ TEST(PerfDataReaderTest, IsKernel) {
                      /*binary_content=*/nullptr)
           .IsKernelMode());
 }
+
+TEST(PerfDataReaderTest, KernelRuntimeAddressToBinaryAddress) {
+  BinaryContent binary_content;
+  // Simulating ARM64 kernel layout where segment[0] starts at _text
+  // (0xffffffc080000000) and .text section starts at _stext
+  // (0xffffffc080010000).
+  binary_content.segments = {
+      {.offset = 0x10000, .vaddr = 0xffffffc080000000, .memsz = 0x1000000}};
+  binary_content.text_section_vaddr = 0xffffffc080010000;
+
+  // Case 1: Linux perf records [kernel.kallsyms]_text anchored to _text.
+  // Runtime address: randomized _text base (0xffffffd984e00000) + offset
+  // (0x12340).
+  BinaryMMaps text_mmaps;
+  text_mmaps[PerfDataReader::kKernelPid] = {
+      MMapEntry(PerfDataReader::kKernelPid, /*addr=*/0xffffffd984e00000,
+                /*size=*/0x1000000, /*pgoff=*/0, "[kernel.kallsyms]_text")};
+  PerfDataReader reader_text(PerfDataProvider::BufferHandle{},
+                             std::move(text_mmaps), &binary_content);
+  EXPECT_EQ(reader_text.RuntimeAddressToBinaryAddress(
+                PerfDataReader::kKernelPid, 0xffffffd984e12340),
+            0xffffffc080012340);
+
+  // Case 2: Android simpleperf records [kernel.kallsyms]_stext anchored to
+  // _stext. Runtime address: randomized _stext base (0xffffffd984e10000) +
+  // offset (0x2340).
+  BinaryMMaps stext_mmaps;
+  stext_mmaps[PerfDataReader::kKernelPid] = {
+      MMapEntry(PerfDataReader::kKernelPid, /*addr=*/0xffffffd984e10000,
+                /*size=*/0x1000000, /*pgoff=*/0, "[kernel.kallsyms]_stext")};
+  PerfDataReader reader_stext(PerfDataProvider::BufferHandle{},
+                              std::move(stext_mmaps), &binary_content);
+  EXPECT_EQ(reader_stext.RuntimeAddressToBinaryAddress(
+                PerfDataReader::kKernelPid, 0xffffffd984e12340),
+            0xffffffc080012340);
+}
 }  // namespace
 }  // namespace propeller
