@@ -36,6 +36,7 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
+#include "llvm/Object/BBAddrMap.h"
 #include "llvm/Object/ELF.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/ELFTypes.h"
@@ -276,6 +277,69 @@ absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> ReadAArch64ThunkSymbols(
     }
   }
   return thunks;
+}
+
+// Note on Linux kernel layout:
+// The `_text` symbol and the `.text` section address are completely different:
+//  - The `_text` symbol marks the start of the kernel image in virtual memory,
+//    and its address is identical to the first executable segment
+//    (`segments[0].vaddr`, e.g. `.head.text` on ARM64).
+//  - The `_stext` ("Start of Text") symbol marks the beginning of the primary
+//    `.text` section, and its address is identical to the `.text` section
+//    header address.
+//  - There may be a gap between `_stext` (or the `.text` section address) and
+//    `_text` (or the address of the first executable segment). On ARM64, for
+//    instance, `.head.text` precedes `.text`, creating a gap (typically 64 KB).
+//
+// Linux `perf` anchors kernel memory maps at `[kernel.kallsyms]_text` (the
+// `_text` symbol / `segments[0].vaddr`), while Android `simpleperf` anchors at
+// `[kernel.kallsyms]_stext` (the `_stext` symbol / `.text` section).
+//
+// Returns the gap (offset) between `_stext` (or the `.text` section address)
+// and `_text` (or the first executable segment `segments[0].vaddr`). Used for
+// kernel address translation when the perf mmap is anchored to
+// [kernel.kallsyms]_stext.
+std::optional<uint64_t> GetKernelStextOffset(
+    const BinaryContent& binary_content) {
+  // 1. Determine base address (`_text`), falling back to `segments[0].vaddr`.
+  // The `_text` symbol's address is identical to the start of the first
+  // executable segment (`segments[0].vaddr`), allowing safe fallback if `_text`
+  // is not found.
+  std::optional<uint64_t> base_addr;
+  if (auto text_addr =
+          propeller::GetSymbolAddress(*binary_content.object_file, "_text");
+      text_addr.ok()) {
+    base_addr = *text_addr;
+  } else if (!binary_content.segments.empty()) {
+    base_addr = binary_content.segments[0].vaddr;
+  }
+  if (!base_addr.has_value()) return std::nullopt;
+
+  // 2. Determine `_stext` address, falling back to the `.text` section header.
+  // The `_stext` symbol's address is identical to the `.text` section header
+  // address, allowing safe fallback if `_stext` is not found.
+  std::optional<uint64_t> stext_addr;
+  if (auto addr =
+          propeller::GetSymbolAddress(*binary_content.object_file, "_stext");
+      addr.ok()) {
+    stext_addr = *addr;
+  } else {
+    for (const llvm::object::SectionRef& section :
+         binary_content.object_file->sections()) {
+      llvm::Expected<llvm::StringRef> name = section.getName();
+      if (name && *name == ".text") {
+        stext_addr = section.getAddress();
+        break;
+      }
+    }
+  }
+
+  // Calculate the gap between `_stext` (or `.text` section address) and `_text`
+  // (or the address of the first executable segment).
+  if (stext_addr.has_value() && *stext_addr >= *base_addr) {
+    return *stext_addr - *base_addr;
+  }
+  return std::nullopt;
 }
 }  // namespace
 
@@ -528,6 +592,7 @@ absl::StatusOr<std::unique_ptr<BinaryContent>> GetBinaryContent(
     RETURN_IF_ERROR(elf_file_util->InitializeKernelModule(*binary_content));
   }
   RETURN_IF_ERROR(elf_file_util->ReadLoadableSegments(*binary_content));
+  binary_content->kernel_stext_offset = GetKernelStextOffset(*binary_content);
   return binary_content;
 }
 

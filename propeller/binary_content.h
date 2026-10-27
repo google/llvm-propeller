@@ -28,8 +28,8 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
+#include "llvm/Object/BBAddrMap.h"
 #include "llvm/Object/ELFObjectFile.h"
-#include "llvm/Object/ELFTypes.h"
 #include "llvm/Object/ObjectFile.h"
 
 namespace propeller {
@@ -95,6 +95,11 @@ struct BinaryContent {
   // Only not-null when input is *.ko and `ELFFileUtil::InitializeKernelModule`
   // returns ok status.
   std::optional<KernelModule> kernel_module = std::nullopt;
+  // The offset (gap) between `_stext` (or the `.text` section address) and
+  // `_text` (or the first executable segment `segments[0].vaddr`). Used for
+  // kernel address translation when mmap is anchored to
+  // [kernel.kallsyms]_stext.
+  std::optional<uint64_t> kernel_stext_offset = std::nullopt;
 };
 
 // Utility class that wraps utility functions that need templated

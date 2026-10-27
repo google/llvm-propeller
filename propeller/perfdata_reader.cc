@@ -332,6 +332,11 @@ uint64_t PerfDataReader::RuntimeAddressToBinaryAddress(uint32_t pid,
   if (is_kernel) {
     // For kernel, do not use page_offset. b/262656839#9
     file_offset = addr - mmap->load_addr;
+    if ((mmap->file_name == "[kernel.kallsyms]_stext" ||
+         absl::EndsWith(mmap->file_name, "_stext")) &&
+        binary_content_->kernel_stext_offset.has_value()) {
+      file_offset += *binary_content_->kernel_stext_offset;
+    }
   } else {
     file_offset = addr - mmap->load_addr + mmap->page_offset;
   }
