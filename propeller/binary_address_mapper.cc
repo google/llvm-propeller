@@ -596,19 +596,19 @@ bool BinaryAddressMapper::CanFallThrough(int from, int to) const {
   BbHandle from_bb = bb_handles_[from];
   BbHandle to_bb = bb_handles_[to];
   if (from_bb.function_index != to_bb.function_index) {
-    LOG_EVERY_N(ERROR, 100)
+    LOG_EVERY_N(ERROR, 1000)
         << "Skipping fallthrough path " << from_bb << "->" << to_bb
         << ": endpoints are in different functions.";
     return false;
   }
   if (from_bb.range_index != to_bb.range_index) {
-    LOG_EVERY_N(ERROR, 100) << "Skipping fallthrough path " << from_bb << "->"
-                            << to_bb << ": endpoints are in different ranges.";
+    LOG_EVERY_N(ERROR, 1000) << "Skipping fallthrough path " << from_bb << "->"
+                             << to_bb << ": endpoints are in different ranges.";
     return false;
   }
   if (from_bb.bb_index > to_bb.bb_index) {
-    LOG_EVERY_N(WARNING, 100) << "Skipping fallthrough path " << from_bb << "->"
-                              << to_bb << ": start comes after end.";
+    LOG_EVERY_N(WARNING, 1000) << "Skipping fallthrough path " << from_bb
+                               << "->" << to_bb << ": start comes after end.";
     return false;
   }
   for (int i = from_bb.bb_index; i != to_bb.bb_index; ++i) {
@@ -621,7 +621,7 @@ bool BinaryAddressMapper::CanFallThrough(int from, int to) const {
     // block) does not fall through (source block is checked before entering
     // this loop).
     if (!GetBBEntry(bb_sym).canFallThrough()) {
-      LOG_EVERY_N(WARNING, 100)
+      LOG_EVERY_N(WARNING, 1000)
           << "Skipping fallthrough path " << from_bb << "->" << to_bb
           << ": covers non-fallthrough block " << bb_sym << ".";
       return false;
@@ -629,9 +629,9 @@ bool BinaryAddressMapper::CanFallThrough(int from, int to) const {
   }
   // Warn about unusually-long fallthroughs.
   if (to - from >= 200) {
-    LOG(WARNING) << "More than 200 BBs along fallthrough (" << GetName(from_bb)
-                 << " -> " << GetName(to_bb) << "): " << to - from + 1
-                 << " BBs.";
+    LOG_EVERY_N(WARNING, 100)
+        << "More than 200 BBs along fallthrough (" << GetName(from_bb) << " -> "
+        << GetName(to_bb) << "): " << to - from + 1 << " BBs.";
   }
   return true;
 }
