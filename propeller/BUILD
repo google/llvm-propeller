@@ -1379,17 +1379,6 @@ cc_test(
 cc_test(
     name = "binary_address_mapper_test",
     srcs = ["binary_address_mapper_test.cc"],
-    data = [
-        "//propeller/testdata:bimodal_sample.bin",
-        "//propeller/testdata:bimodal_sample.x.bin",
-        "//propeller/testdata:bimodal_sample_mfs.bin",
-        "//propeller/testdata:duplicate_symbols_bin",
-        "//propeller/testdata:duplicate_unique_names",
-        "//propeller/testdata:sample.bin",
-        "//propeller/testdata:sample_section.bin",
-        "//propeller/testdata:sample_with_dropped_symbol.bin",
-        "//propeller/testdata:special_case.bin",
-    ],
     deps = [
         ":bb_handle",
         ":binary_address_branch_path",
@@ -1400,9 +1389,13 @@ cc_test(
         ":status_testing_macros",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/status",
+        "@abseil-cpp//absl/status:statusor",
+        "@abseil-cpp//absl/strings",
         "@abseil-cpp//absl/time",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:ObjectYAML",
         "@llvm-project//llvm:Support",
     ],
 )

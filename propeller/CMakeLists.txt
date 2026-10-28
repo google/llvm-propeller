@@ -128,6 +128,7 @@ propeller_generate_tests(
   DEPS
     # keep-sorted start
     GTest::gmock_main
+    LLVMObjectYAML
     absl::base
     absl::flat_hash_set
     absl::hash
