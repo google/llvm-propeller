@@ -33,7 +33,6 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
-#include "llvm/Object/ELFTypes.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/ObjectYAML/yaml2obj.h"
 #include "llvm/Support/Error.h"
@@ -1006,7 +1005,7 @@ TEST(BinaryAddressMapper, DuplicateSymbolsDropped) {
       GetBBAddrMapByFunctionName(*binary_address_mapper),
       AllOf(Not(Contains(Key("sample1_func"))),
             Contains(Pair("compute_flag", BbAddrMapIs(_, Not(IsEmpty()))))));
-  EXPECT_EQ(stats.bbaddrmap_stats.duplicate_symbols, 1);
+  EXPECT_EQ(stats.bbaddrmap_stats.duplicate_symbols, 2);
 }
 
 TEST(BinaryAddressMapper, NoneDotTextSymbolsDropped) {
@@ -1057,11 +1056,11 @@ TEST(BinaryAddressMapper, DuplicateUniqNames) {
       std::unique_ptr<BinaryAddressMapper> binary_address_mapper,
       BuildBinaryAddressMapper(options, *binary_content, stats));
 
-  // The three identical copies of the uniq-named function are kept as one and
-  // the other two are counted as duplicate symbols.
+  // The three identical copies of the uniq-named function are dropped and
+  // counted as duplicate symbols.
   EXPECT_THAT(binary_address_mapper->selected_functions(),
-              ElementsAre(0, 1, 2, 4));
-  EXPECT_EQ(stats.bbaddrmap_stats.duplicate_symbols, 2);
+              ElementsAre(0, 2, 4));
+  EXPECT_EQ(stats.bbaddrmap_stats.duplicate_symbols, 3);
 }
 
 TEST(BinaryAddressMapper, CheckNoHotFunctions) {

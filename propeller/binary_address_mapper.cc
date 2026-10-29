@@ -720,39 +720,9 @@ int BinaryAddressMapperBuilder::FilterDuplicateNameFunctions(
       name_to_function_index[name].push_back(func_index);
   }
 
-  for (auto [name, func_indices] : name_to_function_index) {
+  for (const auto& [name, func_indices] : name_to_function_index) {
     if (func_indices.size() <= 1) continue;
-    duplicate_symbols += func_indices.size() - 1;
-    // Sometimes, duplicated uniq-named symbols are essentially identical
-    // copies. In such cases, we can still keep one copy.
-    // TODO(rahmanl): Why does this work? If we remove other copies, we cannot
-    // map their profiles either.
-    if (name.contains(".__uniq.")) {
-      // duplicate uniq-named symbols found
-      const BBAddrMap& func_addr_map = bb_addr_map_[func_indices.front()];
-      // If the uniq-named functions have the same structure, we assume
-      // they are the same and thus we keep one copy of them.
-      // TODO(b/383334067): Make `getBBEntries` return all BB ranges.
-      bool same_structure = absl::c_all_of(func_indices, [&](int i) {
-        return absl::c_equal(
-            func_addr_map.getBBEntries(), bb_addr_map_[i].getBBEntries(),
-            [](const llvm::object::BBAddrMap::BBEntry& e1,
-               const llvm::object::BBAddrMap::BBEntry& e2) {
-              return e1.Offset == e2.Offset && e1.Size == e2.Size;
-            });
-      });
-      if (same_structure) {
-        LOG(WARNING) << func_indices.size()
-                     << " duplicate uniq-named functions '" << name.str()
-                     << "' with same size and structure found, keep one copy.";
-        for (int i = 1; i < func_indices.size(); ++i)
-          selected_functions.erase(func_indices[i]);
-        continue;
-      }
-      LOG(WARNING) << "duplicate uniq-named functions '" << name.str()
-                   << "' with different size or structure found , drop "
-                      "all of them.";
-    }
+    duplicate_symbols += func_indices.size();
     for (auto func_idx : func_indices) selected_functions.erase(func_idx);
   }
   return duplicate_symbols;
