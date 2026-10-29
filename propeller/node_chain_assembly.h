@@ -16,6 +16,7 @@
 #define PROPELLER_NODE_CHAIN_ASSEMBLY_H_
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -25,6 +26,8 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "llvm/ADT/DenseMapInfo.h"
+#include "llvm/ADT/Hashing.h"
 #include "propeller/cfg_edge.h"
 #include "propeller/chain_merge_order.h"
 #include "propeller/code_layout_scorer.h"
@@ -47,6 +50,11 @@ inline bool operator==(const NodeChainPair& lhs, const NodeChainPair& rhs) {
          lhs.unsplit_chain == rhs.unsplit_chain;
 }
 
+inline llvm::hash_code hash_value(const NodeChainPair& m) {
+  return llvm::hash_combine(m.split_chain, m.unsplit_chain);
+}
+
+// TODO(b/546154457): Remove once all callers are migrated to LLVM containers.
 template <typename H>
 H AbslHashValue(H h, const NodeChainPair& m) {
   return H::combine(std::move(h), m.split_chain, m.unsplit_chain);
@@ -312,5 +320,30 @@ class NodeChainAssembly {
   double score_gain_;
 };
 }  // namespace propeller
+
+namespace llvm {
+template <>
+struct DenseMapInfo<propeller::NodeChainPair> {
+  // Older LLVM versions reserve an empty key and a tombstone key. These keys
+  // use pointer values that never point to a valid `NodeChain`.
+  static propeller::NodeChainPair getEmptyKey() {
+    auto* chain =
+        reinterpret_cast<propeller::NodeChain*>(static_cast<uintptr_t>(-1));
+    return {.split_chain = chain, .unsplit_chain = chain};
+  }
+  static propeller::NodeChainPair getTombstoneKey() {
+    auto* chain =
+        reinterpret_cast<propeller::NodeChain*>(static_cast<uintptr_t>(-2));
+    return {.split_chain = chain, .unsplit_chain = chain};
+  }
+  static unsigned getHashValue(const propeller::NodeChainPair& m) {
+    return static_cast<unsigned>(hash_value(m));
+  }
+  static bool isEqual(const propeller::NodeChainPair& lhs,
+                      const propeller::NodeChainPair& rhs) {
+    return lhs == rhs;
+  }
+};
+}  // namespace llvm
 
 #endif  // PROPELLER_NODE_CHAIN_ASSEMBLY_H_

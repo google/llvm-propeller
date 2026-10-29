@@ -32,6 +32,8 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseMapInfo.h"
+#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
@@ -64,6 +66,11 @@ struct ConflictEdges {
       return from_bb_index == other.from_bb_index &&
              to_bb_index == other.to_bb_index;
     }
+    friend llvm::hash_code hash_value(const IntraEdge& edge) {
+      return llvm::hash_combine(edge.from_bb_index, edge.to_bb_index);
+    }
+    // TODO(b/546154457): Remove once all callers are migrated to LLVM
+    // containers.
     template <typename H>
     friend H AbslHashValue(H h, const IntraEdge& edge) {
       return H::combine(std::move(h), edge.from_bb_index, edge.to_bb_index);
@@ -540,4 +547,23 @@ inline void AbslStringify(Sink& sink, const ControlFlowGraph& cfg) {
   }
 }
 }  // namespace propeller
+
+namespace llvm {
+template <>
+struct DenseMapInfo<propeller::ConflictEdges::IntraEdge> {
+  // Older LLVM versions reserve an empty key and a tombstone key. Basic block
+  // indexes are never negative, so these keys are never valid edges.
+  static propeller::ConflictEdges::IntraEdge getEmptyKey() { return {-1, -1}; }
+  static propeller::ConflictEdges::IntraEdge getTombstoneKey() {
+    return {-2, -2};
+  }
+  static unsigned getHashValue(const propeller::ConflictEdges::IntraEdge& e) {
+    return static_cast<unsigned>(hash_value(e));
+  }
+  static bool isEqual(const propeller::ConflictEdges::IntraEdge& lhs,
+                      const propeller::ConflictEdges::IntraEdge& rhs) {
+    return lhs == rhs;
+  }
+};
+}  // namespace llvm
 #endif  // PROPELLER_CFG_H_
