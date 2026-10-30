@@ -15,6 +15,7 @@
 #include "propeller/node_chain_builder.h"
 
 #include <memory>
+#include <optional>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -360,16 +361,16 @@ std::vector<std::unique_ptr<NodeChain>> NodeChainBuilder::BuildChains() {
 
 void NodeChainBuilder::UpdateNodeChainAssembly(NodeChain& split_chain,
                                                NodeChain& unsplit_chain) {
-  absl::StatusOr<NodeChainAssembly> best_assembly =
-      NodeChainAssembly::BuildNodeChainAssembly(
+  std::optional<NodeChainAssembly> best_assembly =
+      NodeChainAssembly::TryBuildNodeChainAssembly(
           *node_to_bundle_mapper_, code_layout_scorer_, split_chain,
           unsplit_chain, {.merge_order = ChainMergeOrder::kSU});
 
   if (code_layout_scorer_.code_layout_params().chain_split()) {
     auto compare_and_update_best_assembly =
-        [&](absl::StatusOr<NodeChainAssembly> assembly) {
-          if (!assembly.ok()) return;
-          if (!best_assembly.ok() ||
+        [&](std::optional<NodeChainAssembly> assembly) {
+          if (!assembly.has_value()) return;
+          if (!best_assembly.has_value() ||
               NodeChainAssemblyComparator()(*best_assembly, *assembly)) {
             best_assembly = std::move(assembly);
           }
@@ -386,7 +387,7 @@ void NodeChainBuilder::UpdateNodeChainAssembly(NodeChain& split_chain,
              ++slice_pos) {
           // Create the NodeChainAssembly representing this particular assembly.
           compare_and_update_best_assembly(
-              NodeChainAssembly::BuildNodeChainAssembly(
+              NodeChainAssembly::TryBuildNodeChainAssembly(
                   *node_to_bundle_mapper_, code_layout_scorer_, split_chain,
                   unsplit_chain,
                   {.merge_order = merge_order, .slice_pos = slice_pos}));
@@ -403,7 +404,7 @@ void NodeChainBuilder::UpdateNodeChainAssembly(NodeChain& split_chain,
               return;
             for (auto merge_order : merge_orders) {
               compare_and_update_best_assembly(
-                  NodeChainAssembly::BuildNodeChainAssembly(
+                  NodeChainAssembly::TryBuildNodeChainAssembly(
                       *node_to_bundle_mapper_, code_layout_scorer_, split_chain,
                       unsplit_chain,
                       {.merge_order = merge_order, .slice_pos = slice_pos}));
@@ -436,7 +437,7 @@ void NodeChainBuilder::UpdateNodeChainAssembly(NodeChain& split_chain,
       });
     }
   }
-  if (best_assembly.ok()) {
+  if (best_assembly.has_value()) {
     node_chain_assemblies_->InsertAssembly(std::move(*best_assembly));
   } else {
     node_chain_assemblies_->RemoveAssembly(

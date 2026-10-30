@@ -18,24 +18,25 @@
 #include <memory>
 #include <optional>
 #include <tuple>
-#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "propeller/cfg_edge.h"
+#include "propeller/cfg_node.h"
 #include "propeller/chain_merge_order.h"
 #include "propeller/code_layout_scorer.h"
 #include "propeller/node_chain.h"
 
 namespace propeller {
+namespace {
 
-absl::StatusOr<NodeChainAssembly> NodeChainAssembly::BuildNodeChainAssembly(
-    const NodeToBundleMapper& bundle_mapper,
-    const PropellerCodeLayoutScorer& scorer, NodeChain& split_chain,
-    NodeChain& unsplit_chain, NodeChainAssemblyBuildingOptions options) {
+void CheckBuildPreconditions(
+    const NodeChain& split_chain, const NodeChain& unsplit_chain,
+    const NodeChainAssembly::NodeChainAssemblyBuildingOptions& options) {
   CHECK_NE(split_chain.id(), unsplit_chain.id())
       << "Cannot construct an assembly between a chain and itself.";
   if (options.merge_order == ChainMergeOrder::kSU) {
@@ -48,19 +49,53 @@ absl::StatusOr<NodeChainAssembly> NodeChainAssembly::BuildNodeChainAssembly(
         << "Out of bounds slice position.";
     CHECK_GT(*options.slice_pos, 0) << "Out of bounds slice position.";
   }
-  NodeChainAssembly assembly(bundle_mapper, scorer, split_chain, unsplit_chain,
-                             options.merge_order, options.slice_pos);
-  // If `inter_function_ordering = false`, omit assemblies which place the entry
-  // node in the middle of the chain. Placing the entry block in the middle is
-  // allowed. However, it requires multiple hot function parts (sections) as the
-  // function entry always marks the beginning of a section.
-  if (!scorer.code_layout_params().inter_function_reordering() &&
-      (split_chain.GetFirstNode()->is_entry() ||
-       unsplit_chain.GetFirstNode()->is_entry()) &&
-      !assembly.GetFirstNode()->is_entry()) {
+}
+
+// Returns the first node in the chain produced by assembling `split_chain` and
+// `unsplit_chain` with `options`. Requires `CheckBuildPreconditions` to hold.
+const CFGNode* GetAssemblyFirstNode(
+    const NodeChain& split_chain, const NodeChain& unsplit_chain,
+    const NodeChainAssembly::NodeChainAssemblyBuildingOptions& options) {
+  switch (options.merge_order) {
+    case ChainMergeOrder::kSU:
+    case ChainMergeOrder::kS1US2:
+      return split_chain.GetFirstNode();
+    case ChainMergeOrder::kUS2S1:
+      return unsplit_chain.GetFirstNode();
+    case ChainMergeOrder::kS2S1U:
+    case ChainMergeOrder::kS2US1:
+      return split_chain.node_bundles()[*options.slice_pos]->nodes().front();
+  }
+  LOG(FATAL) << "Invalid merge order.";
+}
+
+// If `inter_function_reordering = false`, omit assemblies which place the entry
+// node in the middle of the chain. Placing the entry block in the middle is
+// allowed. However, it requires multiple hot function parts (sections) as the
+// function entry always marks the beginning of a section.
+bool PlacesEntryBlockInMiddle(
+    const PropellerCodeLayoutScorer& scorer, const NodeChain& split_chain,
+    const NodeChain& unsplit_chain,
+    const NodeChainAssembly::NodeChainAssemblyBuildingOptions& options) {
+  return !scorer.code_layout_params().inter_function_reordering() &&
+         (split_chain.GetFirstNode()->is_entry() ||
+          unsplit_chain.GetFirstNode()->is_entry()) &&
+         !GetAssemblyFirstNode(split_chain, unsplit_chain, options)->is_entry();
+}
+
+}  // namespace
+
+absl::StatusOr<NodeChainAssembly> NodeChainAssembly::BuildNodeChainAssembly(
+    const NodeToBundleMapper& bundle_mapper,
+    const PropellerCodeLayoutScorer& scorer, NodeChain& split_chain,
+    NodeChain& unsplit_chain, NodeChainAssemblyBuildingOptions options) {
+  CheckBuildPreconditions(split_chain, unsplit_chain, options);
+  if (PlacesEntryBlockInMiddle(scorer, split_chain, unsplit_chain, options)) {
     return absl::FailedPreconditionError(
         "Assembly places the entry block in the middle.");
   }
+  NodeChainAssembly assembly(bundle_mapper, scorer, split_chain, unsplit_chain,
+                             options.merge_order, options.slice_pos);
 
   // Also omit assemblies without positive gain.
   if (assembly.score_gain() < 0) {
@@ -68,8 +103,26 @@ absl::StatusOr<NodeChainAssembly> NodeChainAssembly::BuildNodeChainAssembly(
         llvm::formatv("Assembly has negative score gain: {0:F6}",
                       assembly.score_gain())
             .str());
-  } else if (assembly.score_gain() == 0 && options.error_on_zero_score_gain) {
+  }
+  if (assembly.score_gain() == 0 && options.error_on_zero_score_gain) {
     return absl::FailedPreconditionError("Assembly has zero score gain.");
+  }
+  return assembly;
+}
+
+std::optional<NodeChainAssembly> NodeChainAssembly::TryBuildNodeChainAssembly(
+    const NodeToBundleMapper& bundle_mapper,
+    const PropellerCodeLayoutScorer& scorer, NodeChain& split_chain,
+    NodeChain& unsplit_chain, NodeChainAssemblyBuildingOptions options) {
+  CheckBuildPreconditions(split_chain, unsplit_chain, options);
+  if (PlacesEntryBlockInMiddle(scorer, split_chain, unsplit_chain, options)) {
+    return std::nullopt;
+  }
+  NodeChainAssembly assembly(bundle_mapper, scorer, split_chain, unsplit_chain,
+                             options.merge_order, options.slice_pos);
+  if (assembly.score_gain() < 0 ||
+      (assembly.score_gain() == 0 && options.error_on_zero_score_gain)) {
+    return std::nullopt;
   }
   return assembly;
 }
@@ -89,7 +142,8 @@ double NodeChainAssembly::ComputeScoreGain(
   return score_gain + ComputeSplitChainScoreGain(bundle_mapper, scorer);
 }
 
-std::vector<NodeChainSlice> NodeChainAssembly::ConstructSlices() const {
+llvm::SmallVector<NodeChainSlice, 3> NodeChainAssembly::ConstructSlices()
+    const {
   NodeChainSlice unsplit(unsplit_chain());
   if (merge_order_ == ChainMergeOrder::kSU)
     return {NodeChainSlice(split_chain()), unsplit};
@@ -123,23 +177,21 @@ std::optional<int> NodeChainAssembly::FindSliceIndex(
   // So the slice index will be 0.
   if (!splits()) return 0;
   for (int idx : split_chain_slice_indexes()) {
-    CHECK_EQ(chain.id(), slices()[idx].chain().id());
-    if (offset < slices()[idx].end_offset() &&
-        offset > slices()[idx].begin_offset()) {
+    const NodeChainSlice& slice = slices_[idx];
+    CHECK_EQ(chain.id(), slice.chain().id());
+    if (offset < slice.end_offset() && offset > slice.begin_offset()) {
       return idx;
     }
     // A node can have zero size, which means multiple nodes may be associated
     // with the same offset. This means that if the node's offset is at the
     // beginning or the end of the slice, the node may reside in either
     // slices_ of the chain.
-    if (offset == slices()[idx].end_offset()) {
+    if (offset == slice.end_offset()) {
       // If offset is at the end of the slice, iterate backwards over the
       // slice to find the node among the zero-sized nodes at the end of the
       // slice.
-      for (auto node_bundle_it =
-               std::make_reverse_iterator(slices()[idx].end_pos());
-           node_bundle_it !=
-           std::make_reverse_iterator(slices()[idx].begin_pos());
+      for (auto node_bundle_it = std::make_reverse_iterator(slice.end_pos());
+           node_bundle_it != std::make_reverse_iterator(slice.begin_pos());
            ++node_bundle_it) {
         for (auto node_it = (*node_bundle_it)->nodes().rbegin();
              node_it != (*node_bundle_it)->nodes().rend(); ++node_it) {
@@ -150,12 +202,12 @@ std::optional<int> NodeChainAssembly::FindSliceIndex(
         }
       }
     }
-    if (offset == slices_[idx].begin_offset()) {
+    if (offset == slice.begin_offset()) {
       // If offset is at the beginning of the slice, iterate forwards over the
       // slice to find the node among the zero-sized nodes at the beginning of
       // the slice.
-      for (auto node_bundle_it = slices()[idx].begin_pos();
-           node_bundle_it != slices()[idx].end_pos(); ++node_bundle_it) {
+      for (auto node_bundle_it = slice.begin_pos();
+           node_bundle_it != slice.end_pos(); ++node_bundle_it) {
         for (auto node_it = (*node_bundle_it)->nodes().begin();
              node_it != (*node_bundle_it)->nodes().end(); ++node_it) {
           if (*node_it == node) return idx;
