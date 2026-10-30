@@ -1201,12 +1201,28 @@ TEST_P(NodeChainAssemblyBuildStatusTest, TestBuildNodeChainAssemblyStatus) {
     chain_builder.MergeChains(*chains.at(left_chain_id),
                               *chains.at(right_chain_id));
 
-  EXPECT_THAT(NodeChainAssembly::BuildNodeChainAssembly(
-                  chain_builder.node_to_bundle_mapper(),
-                  chain_builder.code_layout_scorer(),
-                  *chains.at(test_case.split_chain_id),
-                  *chains.at(test_case.unsplit_chain_id), test_case.options),
-              test_case.status_matcher);
+  absl::StatusOr<NodeChainAssembly> built_assembly =
+      NodeChainAssembly::BuildNodeChainAssembly(
+          chain_builder.node_to_bundle_mapper(),
+          chain_builder.code_layout_scorer(),
+          *chains.at(test_case.split_chain_id),
+          *chains.at(test_case.unsplit_chain_id), test_case.options);
+  EXPECT_THAT(built_assembly, test_case.status_matcher);
+  std::optional<NodeChainAssembly> tried_assembly =
+      NodeChainAssembly::TryBuildNodeChainAssembly(
+          chain_builder.node_to_bundle_mapper(),
+          chain_builder.code_layout_scorer(),
+          *chains.at(test_case.split_chain_id),
+          *chains.at(test_case.unsplit_chain_id), test_case.options);
+  EXPECT_EQ(tried_assembly.has_value(), built_assembly.ok());
+  if (tried_assembly.has_value() && built_assembly.ok()) {
+    EXPECT_EQ(tried_assembly->score_gain(), built_assembly->score_gain());
+    EXPECT_EQ(tried_assembly->slices().size(), built_assembly->slices().size());
+    EXPECT_EQ(tried_assembly->slices().size(),
+              tried_assembly->splits() ? 3 : 2);
+    EXPECT_EQ(GetOrderedNodeIds(*tried_assembly),
+              GetOrderedNodeIds(*built_assembly));
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -1217,6 +1233,14 @@ INSTANTIATE_TEST_SUITE_P(
           .split_chain_id = {10, {0, 0}},
           .unsplit_chain_id = {10, {2, 0}},
           .options = {.merge_order = ChainMergeOrder::kS2S1U, .slice_pos = 1},
+          .status_matcher =
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       "Assembly places the entry block in the middle.")},
+         {.test_name = "EntryInMiddleUS2S1MultiNode",
+          .setup_merge_chain_ids = {{{10, {0, 0}}, {10, {1, 0}}}},
+          .split_chain_id = {10, {0, 0}},
+          .unsplit_chain_id = {10, {2, 0}},
+          .options = {.merge_order = ChainMergeOrder::kUS2S1, .slice_pos = 1},
           .status_matcher =
               StatusIs(absl::StatusCode::kFailedPrecondition,
                        "Assembly places the entry block in the middle.")},
@@ -1238,6 +1262,18 @@ INSTANTIATE_TEST_SUITE_P(
           .unsplit_chain_id = {10, {3, 0}},
           .options = {.merge_order = ChainMergeOrder::kSU,
                       .error_on_zero_score_gain = false},
+          .status_matcher = IsOk()},
+         {.test_name = "PositiveScoreGainS1US2OK",
+          .setup_merge_chain_ids = {{{10, {0, 0}}, {10, {2, 0}}}},
+          .split_chain_id = {10, {0, 0}},
+          .unsplit_chain_id = {10, {1, 0}},
+          .options = {.merge_order = ChainMergeOrder::kS1US2, .slice_pos = 1},
+          .status_matcher = IsOk()},
+         {.test_name = "PositiveScoreGainUS2S1OK",
+          .setup_merge_chain_ids = {{{10, {1, 0}}, {10, {2, 0}}}},
+          .split_chain_id = {10, {1, 0}},
+          .unsplit_chain_id = {10, {0, 0}},
+          .options = {.merge_order = ChainMergeOrder::kUS2S1, .slice_pos = 1},
           .status_matcher = IsOk()},
          {.test_name = "EntryInMiddleSUSingleNode",
           .split_chain_id = {10, {1, 0}},
