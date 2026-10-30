@@ -153,29 +153,6 @@ void DumpCfgs(const PropellerProfile& profile,
   bb_addr_map_pb.SerializeToOstream(&cfg_dump_os);
 }
 
-// Writes the intra-function edge profile of `cfg` into `out` in a single line
-// which starts with the "g" marker.
-// For each CFGNode, it prints out the node and edge frequencies in the
-// following format:
-// "<bb>:<bb_freq>,<succ_bb_1>:<edge_freq_1>,<succ_bb_2>:<edge_freq_2>,..."
-// which starts first with the full bb id and frequency of that node, followed
-// by the successors and their edge frequencies. Please note that the edge
-// weights may not precisely add up to the node frequency.
-void WriteCfgProfile(const ControlFlowGraph& cfg, std::ofstream& out) {
-  out << "g";
-  cfg.ForEachNodeRef([&](const CFGNode& node) {
-    int64_t node_frequency = node.CalculateFrequency();
-    out << " " << node.full_intra_cfg_id().profile_bb_id() << ":"
-        << node_frequency;
-    node.ForEachOutEdgeInOrder([&](const CFGEdge& edge) {
-      if (!edge.IsBranchOrFallthrough()) return;
-      out << "," << edge.sink()->full_intra_cfg_id().profile_bb_id() << ":"
-          << edge.weight();
-    });
-  });
-  out << "\n";
-}
-
 // Writes the basic block hashes in a single line which starts with the "h"
 // marker. For each CFGNode, it prints out the node and hash in the following
 // format:
@@ -191,6 +168,22 @@ void WriteBBHash(const ControlFlowGraph& cfg, std::ofstream& out) {
 }
 
 }  // namespace
+
+void PropellerProfileWriter::WriteCfgProfile(const ControlFlowGraph& cfg,
+                                             std::ofstream& out) const {
+  out << profile_encoding_.cfg_specifier;
+  cfg.ForEachNodeRef([&](const CFGNode& node) {
+    int64_t node_frequency = node.CalculateFrequency();
+    out << " " << node.full_intra_cfg_id().profile_bb_id() << ":"
+        << node_frequency;
+    node.ForEachOutEdgeInOrder([&](const CFGEdge& edge) {
+      if (!edge.IsBranchOrFallthrough()) return;
+      out << "," << edge.sink()->full_intra_cfg_id().profile_bb_id() << ":"
+          << edge.weight();
+    });
+  });
+  out << "\n";
+}
 
 void PropellerProfileWriter::WritePrefetchInfo(
     const FunctionPrefetchInfo& prefetch_info, const ProgramCfg& program_cfg,

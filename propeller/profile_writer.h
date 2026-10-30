@@ -40,6 +40,16 @@ class PropellerProfileWriter {
  private:
   struct ProfileEncoding;
 
+  // Writes the intra-function edge profile of `cfg` into `out` in a single line
+  // which starts with `profile_encoding_.cfg_specifier`.
+  // For each CFGNode, it prints out the node and edge frequencies in the
+  // following format:
+  // "<bb>:<bb_freq>,<succ_bb_1>:<edge_freq_1>,<succ_bb_2>:<edge_freq_2>,..."
+  // which starts first with the full bb id and frequency of that node, followed
+  // by the successors and their edge frequencies. Please note that the edge
+  // weights may not precisely add up to the node frequency.
+  void WriteCfgProfile(const ControlFlowGraph& cfg, std::ofstream& out) const;
+
   // Writes prefetch hints in `prefetch_info` to `out`.
   void WritePrefetchInfo(const FunctionPrefetchInfo& prefetch_info,
                          const ProgramCfg& program_cfg,
@@ -55,6 +65,7 @@ class PropellerProfileWriter {
     std::string clone_path_specifier;
     std::string prefetch_hint_specifier;
     std::string prefetch_target_specifier;
+    std::string cfg_specifier;
   };
 
   static ProfileEncoding GetProfileEncoding(
@@ -69,7 +80,8 @@ class PropellerProfileWriter {
                 .cluster_specifier = "!!",
                 .clone_path_specifier = "#NOT_SUPPORTED",
                 .prefetch_hint_specifier = "#NOT_SUPPORTED",
-                .prefetch_target_specifier = "#NOT_SUPPORTED"};
+                .prefetch_target_specifier = "#NOT_SUPPORTED",
+                .cfg_specifier = "#NOT_SUPPORTED"};
       case ClusterEncodingVersion::VERSION_1:
         return {.version = version,
                 .version_specifier = "v1",
@@ -79,7 +91,8 @@ class PropellerProfileWriter {
                 .cluster_specifier = "c",
                 .clone_path_specifier = "p",
                 .prefetch_hint_specifier = "i",
-                .prefetch_target_specifier = "t"};
+                .prefetch_target_specifier = "t",
+                .cfg_specifier = "g"};
       default:
         LOG(FATAL) << "Unknown value for ClusterEncodingVersion: "
                    << static_cast<int>(version);
