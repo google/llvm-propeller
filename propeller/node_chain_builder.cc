@@ -15,6 +15,7 @@
 #include "propeller/node_chain_builder.h"
 
 #include <memory>
+#include <optional>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -25,7 +26,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "propeller/cfg.h"
 #include "propeller/cfg_edge.h"
@@ -360,16 +360,16 @@ std::vector<std::unique_ptr<NodeChain>> NodeChainBuilder::BuildChains() {
 
 void NodeChainBuilder::UpdateNodeChainAssembly(NodeChain& split_chain,
                                                NodeChain& unsplit_chain) {
-  absl::StatusOr<NodeChainAssembly> best_assembly =
+  std::optional<NodeChainAssembly> best_assembly =
       NodeChainAssembly::BuildNodeChainAssembly(
           *node_to_bundle_mapper_, code_layout_scorer_, split_chain,
           unsplit_chain, {.merge_order = ChainMergeOrder::kSU});
 
   if (code_layout_scorer_.code_layout_params().chain_split()) {
     auto compare_and_update_best_assembly =
-        [&](absl::StatusOr<NodeChainAssembly> assembly) {
-          if (!assembly.ok()) return;
-          if (!best_assembly.ok() ||
+        [&](std::optional<NodeChainAssembly> assembly) {
+          if (!assembly.has_value()) return;
+          if (!best_assembly.has_value() ||
               NodeChainAssemblyComparator()(*best_assembly, *assembly)) {
             best_assembly = std::move(assembly);
           }
@@ -436,7 +436,7 @@ void NodeChainBuilder::UpdateNodeChainAssembly(NodeChain& split_chain,
       });
     }
   }
-  if (best_assembly.ok()) {
+  if (best_assembly.has_value()) {
     node_chain_assemblies_->InsertAssembly(std::move(*best_assembly));
   } else {
     node_chain_assemblies_->RemoveAssembly(
@@ -458,12 +458,12 @@ void NodeChainBuilder::InitChainAssemblies() {
 
 void NodeChainBuilder::MergeChains(NodeChain& left_chain,
                                    NodeChain& right_chain) {
-  absl::StatusOr<NodeChainAssembly> assembly =
+  std::optional<NodeChainAssembly> assembly =
       NodeChainAssembly::BuildNodeChainAssembly(
           *node_to_bundle_mapper_, code_layout_scorer_, left_chain, right_chain,
           {.merge_order = ChainMergeOrder::kSU,
            .error_on_zero_score_gain = false});
-  CHECK_OK(assembly);
+  CHECK(assembly.has_value());
   MergeChains(*std::move(assembly));
 }
 

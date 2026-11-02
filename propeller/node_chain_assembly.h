@@ -25,9 +25,11 @@
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/status/statusor.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Compiler.h"
 #include "propeller/cfg_edge.h"
 #include "propeller/chain_merge_order.h"
 #include "propeller/code_layout_scorer.h"
@@ -142,8 +144,8 @@ class NodeChainAssembly {
     ChainMergeOrder merge_order = ChainMergeOrder::kSU;
     // The split position in the split_chain (if split_chain must be split).
     std::optional<int> slice_pos = std::nullopt;
-    // Whether `NodeChainAssembly::BuildNodeChainAssembly` should return error
-    // if the constructed assembly's score gain is zero.
+    // Whether `NodeChainAssembly::BuildNodeChainAssembly` should return
+    // `std::nullopt` if the constructed assembly's score gain is zero.
     bool error_on_zero_score_gain = true;
   };
 
@@ -157,14 +159,15 @@ class NodeChainAssembly {
   // Builds a NodeChainAssembly which merges `split_chain` and `unsplit_chain`
   // according to `options`. Both chains must outlive the created
   // NodeChainAssembly. `options.slice_pos` must be `std::nullopt` iff
-  // `options.merge_order == kSU`. Returns error under these conditions:
+  // `options.merge_order == kSU`. Returns `std::nullopt` under these
+  // conditions:
   // 1- The assembly places a function entry node in the middle (in
   //    non-inter-function-reordering mode).
   // 2- `options.slice_pos` is out of bounds (less than 0 or larger than
   //    `split_chain.node_bundles.size() - 1`).
   // 3- The constructed assembly has a negative score gain or it has zero
   //    score gain and `options.error_on_zero_score_gain == true`.
-  static absl::StatusOr<NodeChainAssembly> BuildNodeChainAssembly(
+  static std::optional<NodeChainAssembly> BuildNodeChainAssembly(
       const NodeToBundleMapper& bundle_mapper,
       const PropellerCodeLayoutScorer& scorer, NodeChain& split_chain,
       NodeChain& unsplit_chain, NodeChainAssemblyBuildingOptions options);
@@ -183,7 +186,9 @@ class NodeChainAssembly {
   NodeChain& split_chain() const { return *chain_pair_.split_chain; }
   NodeChain& unsplit_chain() const { return *chain_pair_.unsplit_chain; }
 
-  const std::vector<NodeChainSlice>& slices() const { return slices_; }
+  llvm::ArrayRef<NodeChainSlice> slices() const LLVM_LIFETIME_BOUND {
+    return slices_;
+  }
 
   // Returns whether this assembly actually splits the split_chain.
   bool splits() const { return merge_order_ != ChainMergeOrder::kSU; }
@@ -249,26 +254,30 @@ class NodeChainAssembly {
     LOG(FATAL) << "Invalid merge order.";
   }
 
-  // Indices of the split_chain slices in the slices_ vector.
-  std::vector<int> split_chain_slice_indexes() const {
+  // Indices of the split_chain slices in `slices_`.
+  llvm::ArrayRef<int> split_chain_slice_indexes() const {
+    static constexpr int kSUSplitIndexes[] = {0};
+    static constexpr int kS2S1USplitIndexes[] = {1, 0};
+    static constexpr int kS1US2OrS2US1SplitIndexes[] = {0, 2};
+    static constexpr int kUS2S1SplitIndexes[] = {2, 1};
     switch (merge_order_) {
       case ChainMergeOrder::kSU:
-        return {0};
+        return kSUSplitIndexes;
       case ChainMergeOrder::kS2S1U:
-        return {1, 0};
+        return kS2S1USplitIndexes;
       case ChainMergeOrder::kS1US2:
-        return {0, 2};
+        return kS1US2OrS2US1SplitIndexes;
       case ChainMergeOrder::kUS2S1:
-        return {2, 1};
+        return kUS2S1SplitIndexes;
       case ChainMergeOrder::kS2US1:
-        return {0, 2};
+        return kS1US2OrS2US1SplitIndexes;
     }
     LOG(FATAL) << "Invalid merge_order";
   }
 
   // Constructs and returns the node chain slices that are characterized by the
   // specified slice position and merge order.
-  std::vector<NodeChainSlice> ConstructSlices() const;
+  llvm::SmallVector<NodeChainSlice, 3> ConstructSlices() const;
 
   // Returns the gain in Ext-TSP score if this assembly is applied. May return 0
   // if the actual score gain is negative.
@@ -308,8 +317,8 @@ class NodeChainAssembly {
   // This will be empty for the kSU merge order.
   std::optional<int> slice_pos_;
 
-  // The three chain slices formed from the fields above.
-  std::vector<NodeChainSlice> slices_;
+  // The two or three chain slices formed from the fields above.
+  llvm::SmallVector<NodeChainSlice, 3> slices_;
 
   // The gain in ExtTSP score achieved by this NodeChainAssembly once it
   // is accordingly applied to the two chains.

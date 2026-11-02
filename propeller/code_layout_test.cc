@@ -25,7 +25,6 @@
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
-#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -56,17 +55,17 @@
 namespace propeller {
 namespace {
 
-using ::absl_testing::IsOk;
-using ::absl_testing::StatusIs;
 using ::testing::_;
 using ::testing::Contains;
 using ::testing::DescribeMatcher;
 using ::testing::DoubleNear;
 using ::testing::ElementsAre;
+using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Key;
 using ::testing::Matcher;
+using ::testing::Optional;
 using ::testing::Pair;
 using ::testing::Pointee;
 using ::testing::Property;
@@ -474,12 +473,12 @@ TYPED_TEST(NodeChainBuilderTest, MergeChainsWithAssemblyUpdatesChainEdges) {
                                            Key(InterCfgId{10, {3, 0}}),
                                            Key(InterCfgId{10, {4, 0}})));
   chain_builder.MergeChains(*chains.at({10, {1, 0}}), *chains.at({10, {3, 0}}));
-  absl::StatusOr<NodeChainAssembly> assembly =
+  std::optional<NodeChainAssembly> assembly =
       NodeChainAssembly::BuildNodeChainAssembly(
           chain_builder.node_to_bundle_mapper(),
           chain_builder.code_layout_scorer(), *chains.at({10, {1, 0}}),
           *chains.at({10, {2, 0}}), {.merge_order = ChainMergeOrder::kSU});
-  ASSERT_OK(assembly);
+  ASSERT_NE(assembly, std::nullopt);
   chain_builder.MergeChains(*assembly);
   EXPECT_THAT(GetOrderedNodeIds(*chains.at({10, {1, 0}})),
               ElementsAre(InterCfgId{10, {1, 0}}, InterCfgId{10, {3, 0}},
@@ -903,23 +902,23 @@ TEST(NodeChainAssemblyTest, ApplySUChainMergeOrder) {
                                            Key(InterCfgId{10, {3, 0}}),
                                            Key(InterCfgId{10, {4, 0}})));
 
-  ASSERT_OK_AND_ASSIGN(
-      NodeChainAssembly assembly,
+  std::optional<NodeChainAssembly> assembly =
       NodeChainAssembly::BuildNodeChainAssembly(
           chain_builder.node_to_bundle_mapper(),
           chain_builder.code_layout_scorer(), *chains.at({10, {0, 0}}),
-          *chains.at({10, {2, 0}}), {.merge_order = ChainMergeOrder::kSU}));
-  EXPECT_THAT(assembly.score_gain(), DoubleNear(1500, kEpsilon));
-  EXPECT_THAT(GetSliceIndices(chain_builder.node_to_bundle_mapper(), assembly,
+          *chains.at({10, {2, 0}}), {.merge_order = ChainMergeOrder::kSU});
+  ASSERT_NE(assembly, std::nullopt);
+  EXPECT_THAT(assembly->score_gain(), DoubleNear(1500, kEpsilon));
+  EXPECT_THAT(GetSliceIndices(chain_builder.node_to_bundle_mapper(), *assembly,
                               *chain_builder.cfgs().front()),
               UnorderedElementsAre(Pair(InterCfgId{10, {0, 0}}, 0),
                                    Pair(InterCfgId{10, {2, 0}}, 1),
                                    Pair(InterCfgId{10, {1, 0}}, std::nullopt),
                                    Pair(InterCfgId{10, {3, 0}}, std::nullopt),
                                    Pair(InterCfgId{10, {4, 0}}, std::nullopt)));
-  EXPECT_THAT(GetOrderedNodeIds(assembly),
+  EXPECT_THAT(GetOrderedNodeIds(*assembly),
               ElementsAre(InterCfgId{10, {0, 0}}, InterCfgId{10, {2, 0}}));
-  chain_builder.MergeChains(assembly);
+  chain_builder.MergeChains(*assembly);
   EXPECT_THAT(GetOrderedNodeIds(*chains.at({10, {0, 0}})),
               ElementsAre(InterCfgId{10, {0, 0}}, InterCfgId{10, {2, 0}}));
   EXPECT_THAT(chains, UnorderedElementsAre(Key(InterCfgId{10, {0, 0}}),
@@ -958,26 +957,26 @@ TEST(NodeChainAssemblyTest, ApplyS1US2ChainMergeOrder) {
   EXPECT_THAT(GetOrderedNodeIds(*chains.at({10, {0, 0}})),
               ElementsAre(InterCfgId{10, {0, 0}}, InterCfgId{10, {2, 0}}));
 
-  ASSERT_OK_AND_ASSIGN(
-      NodeChainAssembly assembly,
+  std::optional<NodeChainAssembly> assembly =
       NodeChainAssembly::BuildNodeChainAssembly(
           chain_builder.node_to_bundle_mapper(),
           chain_builder.code_layout_scorer(), *chains.at({10, {0, 0}}),
           *chains.at({10, {1, 0}}),
-          {.merge_order = ChainMergeOrder::kS1US2, .slice_pos = 1}));
+          {.merge_order = ChainMergeOrder::kS1US2, .slice_pos = 1});
+  ASSERT_NE(assembly, std::nullopt);
 
-  EXPECT_THAT(GetSliceIndices(chain_builder.node_to_bundle_mapper(), assembly,
+  EXPECT_THAT(GetSliceIndices(chain_builder.node_to_bundle_mapper(), *assembly,
                               *chain_builder.cfgs().front()),
               UnorderedElementsAre(Pair(InterCfgId{10, {0, 0}}, 0),
                                    Pair(InterCfgId{10, {1, 0}}, 1),
                                    Pair(InterCfgId{10, {2, 0}}, 2),
                                    Pair(InterCfgId{10, {3, 0}}, std::nullopt),
                                    Pair(InterCfgId{10, {4, 0}}, std::nullopt)));
-  EXPECT_THAT(assembly.score_gain(), DoubleNear(749.414, kEpsilon));
-  EXPECT_THAT(GetOrderedNodeIds(assembly),
+  EXPECT_THAT(assembly->score_gain(), DoubleNear(749.414, kEpsilon));
+  EXPECT_THAT(GetOrderedNodeIds(*assembly),
               ElementsAre(InterCfgId{10, {0, 0}}, InterCfgId{10, {1, 0}},
                           InterCfgId{10, {2, 0}}));
-  chain_builder.MergeChains(assembly);
+  chain_builder.MergeChains(*assembly);
   EXPECT_THAT(GetOrderedNodeIds(*chains.at({10, {0, 0}})),
               ElementsAre(InterCfgId{10, {0, 0}}, InterCfgId{10, {1, 0}},
                           InterCfgId{10, {2, 0}}));
@@ -1016,25 +1015,25 @@ TEST(NodeChainAssemblyTest, ApplyUS2S1ChainMergeOrder) {
   EXPECT_THAT(GetOrderedNodeIds(*chains.at({10, {2, 0}})),
               ElementsAre(InterCfgId{10, {2, 0}}, InterCfgId{10, {1, 0}}));
 
-  ASSERT_OK_AND_ASSIGN(
-      NodeChainAssembly assembly,
+  std::optional<NodeChainAssembly> assembly =
       NodeChainAssembly::BuildNodeChainAssembly(
           chain_builder.node_to_bundle_mapper(),
           chain_builder.code_layout_scorer(), *chains.at({10, {2, 0}}),
           *chains.at({10, {0, 0}}),
-          {.merge_order = ChainMergeOrder::kUS2S1, .slice_pos = 1}));
-  EXPECT_THAT(GetSliceIndices(chain_builder.node_to_bundle_mapper(), assembly,
+          {.merge_order = ChainMergeOrder::kUS2S1, .slice_pos = 1});
+  ASSERT_NE(assembly, std::nullopt);
+  EXPECT_THAT(GetSliceIndices(chain_builder.node_to_bundle_mapper(), *assembly,
                               *chain_builder.cfgs().front()),
               UnorderedElementsAre(Pair(InterCfgId{10, {0, 0}}, 0),
                                    Pair(InterCfgId{10, {1, 0}}, 1),
                                    Pair(InterCfgId{10, {2, 0}}, 2),
                                    Pair(InterCfgId{10, {3, 0}}, std::nullopt),
                                    Pair(InterCfgId{10, {4, 0}}, std::nullopt)));
-  EXPECT_THAT(assembly.score_gain(), DoubleNear(2150.00230, kEpsilon));
-  EXPECT_THAT(GetOrderedNodeIds(assembly),
+  EXPECT_THAT(assembly->score_gain(), DoubleNear(2150.00230, kEpsilon));
+  EXPECT_THAT(GetOrderedNodeIds(*assembly),
               ElementsAre(InterCfgId{10, {0, 0}}, InterCfgId{10, {1, 0}},
                           InterCfgId{10, {2, 0}}));
-  chain_builder.MergeChains(assembly);
+  chain_builder.MergeChains(*assembly);
   EXPECT_THAT(chains, UnorderedElementsAre(Key(InterCfgId{10, {2, 0}}),
                                            Key(InterCfgId{10, {3, 0}}),
                                            Key(InterCfgId{10, {4, 0}})));
@@ -1073,26 +1072,26 @@ TEST(NodeChainAssemblyTest, ApplyS2S1UChainMergeOrder) {
   EXPECT_THAT(GetOrderedNodeIds(*chains.at({10, {2, 0}})),
               ElementsAre(InterCfgId{10, {2, 0}}, InterCfgId{10, {1, 0}}));
 
-  ASSERT_OK_AND_ASSIGN(
-      NodeChainAssembly assembly,
+  std::optional<NodeChainAssembly> assembly =
       NodeChainAssembly::BuildNodeChainAssembly(
           chain_builder.node_to_bundle_mapper(),
           chain_builder.code_layout_scorer(), *chains.at({10, {2, 0}}),
           *chains.at({10, {3, 0}}),
-          {.merge_order = ChainMergeOrder::kS2S1U, .slice_pos = 1}));
+          {.merge_order = ChainMergeOrder::kS2S1U, .slice_pos = 1});
+  ASSERT_NE(assembly, std::nullopt);
 
-  EXPECT_THAT(GetSliceIndices(chain_builder.node_to_bundle_mapper(), assembly,
+  EXPECT_THAT(GetSliceIndices(chain_builder.node_to_bundle_mapper(), *assembly,
                               *chain_builder.cfgs().front()),
               UnorderedElementsAre(Pair(InterCfgId{10, {0, 0}}, std::nullopt),
                                    Pair(InterCfgId{10, {1, 0}}, 0),
                                    Pair(InterCfgId{10, {2, 0}}, 1),
                                    Pair(InterCfgId{10, {3, 0}}, 2),
                                    Pair(InterCfgId{10, {4, 0}}, std::nullopt)));
-  EXPECT_THAT(assembly.score_gain(), DoubleNear(1000.58824, kEpsilon));
-  EXPECT_THAT(GetOrderedNodeIds(assembly),
+  EXPECT_THAT(assembly->score_gain(), DoubleNear(1000.58824, kEpsilon));
+  EXPECT_THAT(GetOrderedNodeIds(*assembly),
               ElementsAre(InterCfgId{10, {1, 0}}, InterCfgId{10, {2, 0}},
                           InterCfgId{10, {3, 0}}));
-  chain_builder.MergeChains(assembly);
+  chain_builder.MergeChains(*assembly);
   EXPECT_THAT(chains, UnorderedElementsAre(Key(InterCfgId{10, {0, 0}}),
                                            Key(InterCfgId{10, {2, 0}}),
                                            Key(InterCfgId{10, {4, 0}})));
@@ -1131,25 +1130,25 @@ TEST(NodeChainAssemblyTest, ApplyS2US1ChainMergeOrder) {
   EXPECT_THAT(GetOrderedNodeIds(*chains.at({10, {2, 0}})),
               ElementsAre(InterCfgId{10, {2, 0}}, InterCfgId{10, {1, 0}}));
 
-  ASSERT_OK_AND_ASSIGN(
-      NodeChainAssembly assembly,
+  std::optional<NodeChainAssembly> assembly =
       NodeChainAssembly::BuildNodeChainAssembly(
           chain_builder.node_to_bundle_mapper(),
           chain_builder.code_layout_scorer(), *chains.at({10, {2, 0}}),
           *chains.at({10, {3, 0}}),
-          {.merge_order = ChainMergeOrder::kS2US1, .slice_pos = 1}));
-  EXPECT_THAT(GetSliceIndices(chain_builder.node_to_bundle_mapper(), assembly,
+          {.merge_order = ChainMergeOrder::kS2US1, .slice_pos = 1});
+  ASSERT_NE(assembly, std::nullopt);
+  EXPECT_THAT(GetSliceIndices(chain_builder.node_to_bundle_mapper(), *assembly,
                               *chain_builder.cfgs().front()),
               UnorderedElementsAre(Pair(InterCfgId{10, {0, 0}}, std::nullopt),
                                    Pair(InterCfgId{10, {1, 0}}, 0),
                                    Pair(InterCfgId{10, {2, 0}}, 2),
                                    Pair(InterCfgId{10, {3, 0}}, 1),
                                    Pair(InterCfgId{10, {4, 0}}, std::nullopt)));
-  EXPECT_THAT(assembly.score_gain(), DoubleNear(100.39292, kEpsilon));
-  EXPECT_THAT(GetOrderedNodeIds(assembly),
+  EXPECT_THAT(assembly->score_gain(), DoubleNear(100.39292, kEpsilon));
+  EXPECT_THAT(GetOrderedNodeIds(*assembly),
               ElementsAre(InterCfgId{10, {1, 0}}, InterCfgId{10, {3, 0}},
                           InterCfgId{10, {2, 0}}));
-  chain_builder.MergeChains(assembly);
+  chain_builder.MergeChains(*assembly);
   EXPECT_THAT(chains, UnorderedElementsAre(Key(InterCfgId{10, {0, 0}}),
                                            Key(InterCfgId{10, {2, 0}}),
                                            Key(InterCfgId{10, {4, 0}})));
@@ -1158,7 +1157,7 @@ TEST(NodeChainAssemblyTest, ApplyS2US1ChainMergeOrder) {
                           InterCfgId{10, {2, 0}}));
 }
 
-struct NodeChainAssemblyBuildStatusTestCase {
+struct NodeChainAssemblyBuildTestCase {
   std::string test_name;
   // Pairs of chain ids which must be merged in order by
   // `NodeChainBuilder::MergeChains(left_chain, right_chain)` before the assert
@@ -1168,14 +1167,14 @@ struct NodeChainAssemblyBuildStatusTestCase {
   InterCfgId split_chain_id;
   InterCfgId unsplit_chain_id;
   NodeChainAssembly::NodeChainAssemblyBuildingOptions options;
-  Matcher<absl::StatusOr<NodeChainAssembly>> status_matcher;
+  Matcher<std::optional<NodeChainAssembly>> assembly_matcher;
 };
 
-using NodeChainAssemblyBuildStatusTest =
-    ::testing::TestWithParam<NodeChainAssemblyBuildStatusTestCase>;
+using NodeChainAssemblyBuildTest =
+    ::testing::TestWithParam<NodeChainAssemblyBuildTestCase>;
 
-TEST_P(NodeChainAssemblyBuildStatusTest, TestBuildNodeChainAssemblyStatus) {
-  const NodeChainAssemblyBuildStatusTestCase& test_case = GetParam();
+TEST_P(NodeChainAssemblyBuildTest, TestBuildNodeChainAssembly) {
+  const NodeChainAssemblyBuildTestCase& test_case = GetParam();
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<ProtoProgramCfg> proto_program_cfg,
                        BuildFromCfgProtoPath(GetTestInputPath(
@@ -1201,59 +1200,73 @@ TEST_P(NodeChainAssemblyBuildStatusTest, TestBuildNodeChainAssemblyStatus) {
     chain_builder.MergeChains(*chains.at(left_chain_id),
                               *chains.at(right_chain_id));
 
-  EXPECT_THAT(NodeChainAssembly::BuildNodeChainAssembly(
-                  chain_builder.node_to_bundle_mapper(),
-                  chain_builder.code_layout_scorer(),
-                  *chains.at(test_case.split_chain_id),
-                  *chains.at(test_case.unsplit_chain_id), test_case.options),
-              test_case.status_matcher);
+  std::optional<NodeChainAssembly> built_assembly =
+      NodeChainAssembly::BuildNodeChainAssembly(
+          chain_builder.node_to_bundle_mapper(),
+          chain_builder.code_layout_scorer(),
+          *chains.at(test_case.split_chain_id),
+          *chains.at(test_case.unsplit_chain_id), test_case.options);
+  EXPECT_THAT(built_assembly, test_case.assembly_matcher);
+  if (built_assembly.has_value()) {
+    EXPECT_EQ(built_assembly->slices().size(),
+              built_assembly->splits() ? 3 : 2);
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    NodeChainAssemblyBuildStatusTests, NodeChainAssemblyBuildStatusTest,
-    testing::ValuesIn<NodeChainAssemblyBuildStatusTestCase>(
+    NodeChainAssemblyBuildTests, NodeChainAssemblyBuildTest,
+    testing::ValuesIn<NodeChainAssemblyBuildTestCase>(
         {{.test_name = "EntryInMiddleS2S1UMultiNode",
           .setup_merge_chain_ids = {{{10, {0, 0}}, {10, {1, 0}}}},
           .split_chain_id = {10, {0, 0}},
           .unsplit_chain_id = {10, {2, 0}},
           .options = {.merge_order = ChainMergeOrder::kS2S1U, .slice_pos = 1},
-          .status_matcher =
-              StatusIs(absl::StatusCode::kFailedPrecondition,
-                       "Assembly places the entry block in the middle.")},
+          .assembly_matcher = Eq(std::nullopt)},
+         {.test_name = "EntryInMiddleUS2S1MultiNode",
+          .setup_merge_chain_ids = {{{10, {0, 0}}, {10, {1, 0}}}},
+          .split_chain_id = {10, {0, 0}},
+          .unsplit_chain_id = {10, {2, 0}},
+          .options = {.merge_order = ChainMergeOrder::kUS2S1, .slice_pos = 1},
+          .assembly_matcher = Eq(std::nullopt)},
          {.test_name = "EntryInMiddleSUMultiNode",
           .split_chain_id = {10, {1, 0}},
           .unsplit_chain_id = {10, {0, 0}},
           .options = {.merge_order = ChainMergeOrder::kSU},
-          .status_matcher =
-              StatusIs(absl::StatusCode::kFailedPrecondition,
-                       "Assembly places the entry block in the middle.")},
+          .assembly_matcher = Eq(std::nullopt)},
          {.test_name = "ZeroScoreGainError",
           .split_chain_id = {10, {0, 0}},
           .unsplit_chain_id = {10, {3, 0}},
           .options = {.merge_order = ChainMergeOrder::kSU},
-          .status_matcher = StatusIs(absl::StatusCode::kFailedPrecondition,
-                                     "Assembly has zero score gain.")},
+          .assembly_matcher = Eq(std::nullopt)},
          {.test_name = "ZeroScoreGainOK",
           .split_chain_id = {10, {0, 0}},
           .unsplit_chain_id = {10, {3, 0}},
           .options = {.merge_order = ChainMergeOrder::kSU,
                       .error_on_zero_score_gain = false},
-          .status_matcher = IsOk()},
+          .assembly_matcher = Optional(_)},
+         {.test_name = "PositiveScoreGainS1US2OK",
+          .setup_merge_chain_ids = {{{10, {0, 0}}, {10, {2, 0}}}},
+          .split_chain_id = {10, {0, 0}},
+          .unsplit_chain_id = {10, {1, 0}},
+          .options = {.merge_order = ChainMergeOrder::kS1US2, .slice_pos = 1},
+          .assembly_matcher = Optional(_)},
+         {.test_name = "PositiveScoreGainUS2S1OK",
+          .setup_merge_chain_ids = {{{10, {1, 0}}, {10, {2, 0}}}},
+          .split_chain_id = {10, {1, 0}},
+          .unsplit_chain_id = {10, {0, 0}},
+          .options = {.merge_order = ChainMergeOrder::kUS2S1, .slice_pos = 1},
+          .assembly_matcher = Optional(_)},
          {.test_name = "EntryInMiddleSUSingleNode",
           .split_chain_id = {10, {1, 0}},
           .unsplit_chain_id = {10, {0, 0}},
           .options = {.merge_order = ChainMergeOrder::kSU},
-          .status_matcher =
-              StatusIs(absl::StatusCode::kFailedPrecondition,
-                       "Assembly places the entry block in the middle.")},
+          .assembly_matcher = Eq(std::nullopt)},
          {.test_name = "NegativeScoreGainS1US2Error1",
           .setup_merge_chain_ids = {{{10, {0, 0}}, {10, {1, 0}}}},
           .split_chain_id = {10, {0, 0}},
           .unsplit_chain_id = {10, {3, 0}},
           .options = {.merge_order = ChainMergeOrder::kS1US2, .slice_pos = 1},
-          .status_matcher =
-              StatusIs(absl::StatusCode::kFailedPrecondition,
-                       "Assembly has negative score gain: -980.303079")},
+          .assembly_matcher = Eq(std::nullopt)},
          {.test_name = "NegativeScoreGainS1US2Error2",
           .setup_merge_chain_ids = {{{10, {0, 0}}, {10, {1, 0}}}},
           .split_chain_id = {10, {0, 0}},
@@ -1261,13 +1274,9 @@ INSTANTIATE_TEST_SUITE_P(
           .options = {.merge_order = ChainMergeOrder::kS1US2,
                       .slice_pos = 1,
                       .error_on_zero_score_gain = false},
-          .status_matcher =
-              StatusIs(absl::StatusCode::kFailedPrecondition,
-                       "Assembly has negative score gain: -980.303079")}}),
-    [](const testing::TestParamInfo<
-        NodeChainAssemblyBuildStatusTest::ParamType>& info) {
-      return info.param.test_name;
-    });
+          .assembly_matcher = Eq(std::nullopt)}}),
+    [](const testing::TestParamInfo<NodeChainAssemblyBuildTest::ParamType>&
+           info) { return info.param.test_name; });
 
 struct NodeChainAssemblyBuildDeathTestCase {
   std::string test_name;
@@ -1312,8 +1321,7 @@ TEST_P(NodeChainAssemblyBuildDeathTest, TestNodeChainAssemblyBuildDeath) {
                    chain_builder.node_to_bundle_mapper(),
                    chain_builder.code_layout_scorer(),
                    *chains.at(test_case.split_chain_id),
-                   *chains.at(test_case.unsplit_chain_id), test_case.options)
-                   .IgnoreError(),
+                   *chains.at(test_case.unsplit_chain_id), test_case.options),
                test_case.expected_error);
 }
 
