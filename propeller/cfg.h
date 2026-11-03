@@ -551,12 +551,6 @@ inline void AbslStringify(Sink& sink, const ControlFlowGraph& cfg) {
 namespace llvm {
 template <>
 struct DenseMapInfo<propeller::ConflictEdges::IntraEdge> {
-  // Older LLVM versions reserve an empty key and a tombstone key. Basic block
-  // indexes are never negative, so these keys are never valid edges.
-  static propeller::ConflictEdges::IntraEdge getEmptyKey() { return {-1, -1}; }
-  static propeller::ConflictEdges::IntraEdge getTombstoneKey() {
-    return {-2, -2};
-  }
   static unsigned getHashValue(const propeller::ConflictEdges::IntraEdge& e) {
     return static_cast<unsigned>(hash_value(e));
   }

@@ -101,42 +101,11 @@ struct BinaryAddressFallthrough {
 // The sentinel value for an invalid binary address.
 inline constexpr uint64_t kInvalidBinaryAddress = static_cast<uint64_t>(-1);
 
-// `DenseMapInfo` for binary addresses (`uint64_t`).
-//
-// Older LLVM versions (such as the one used by the open-source build) reserve
-// an empty key and a tombstone key in `llvm::DenseMap`. The default
-// `llvm::DenseMapInfo<uint64_t>` uses `~0ULL` as the empty key, which is the
-// same value as `kInvalidBinaryAddress`. `kInvalidBinaryAddress` can be a
-// valid key (for example, as a branch endpoint), so use this `DenseMapInfo`
-// for containers of binary addresses. It reserves `kInvalidBinaryAddress - 1`
-// and `kInvalidBinaryAddress - 2` instead, which are never valid addresses.
-// Newer LLVM versions do not reserve keys and ignore these two functions.
-struct BinaryAddressDenseMapInfo {
-  static constexpr uint64_t getEmptyKey() { return kInvalidBinaryAddress - 1; }
-  static constexpr uint64_t getTombstoneKey() {
-    return kInvalidBinaryAddress - 2;
-  }
-  static unsigned getHashValue(uint64_t address) {
-    return static_cast<unsigned>(llvm::hash_value(address));
-  }
-  static bool isEqual(uint64_t lhs, uint64_t rhs) { return lhs == rhs; }
-};
-
 }  // namespace propeller
 
 namespace llvm {
-// The empty and tombstone keys use the `BinaryAddressDenseMapInfo` sentinels,
-// so that keys that contain `kInvalidBinaryAddress` stay valid.
 template <>
 struct DenseMapInfo<propeller::BinaryAddressBranch> {
-  static propeller::BinaryAddressBranch getEmptyKey() {
-    return {propeller::BinaryAddressDenseMapInfo::getEmptyKey(),
-            propeller::BinaryAddressDenseMapInfo::getEmptyKey()};
-  }
-  static propeller::BinaryAddressBranch getTombstoneKey() {
-    return {propeller::BinaryAddressDenseMapInfo::getTombstoneKey(),
-            propeller::BinaryAddressDenseMapInfo::getTombstoneKey()};
-  }
   static unsigned getHashValue(const propeller::BinaryAddressBranch& b) {
     return static_cast<unsigned>(hash_value(b));
   }
@@ -148,12 +117,6 @@ struct DenseMapInfo<propeller::BinaryAddressBranch> {
 
 template <>
 struct DenseMapInfo<propeller::BinaryAddressNotTakenBranch> {
-  static propeller::BinaryAddressNotTakenBranch getEmptyKey() {
-    return {propeller::BinaryAddressDenseMapInfo::getEmptyKey()};
-  }
-  static propeller::BinaryAddressNotTakenBranch getTombstoneKey() {
-    return {propeller::BinaryAddressDenseMapInfo::getTombstoneKey()};
-  }
   static unsigned getHashValue(
       const propeller::BinaryAddressNotTakenBranch& b) {
     return static_cast<unsigned>(hash_value(b));
@@ -166,14 +129,6 @@ struct DenseMapInfo<propeller::BinaryAddressNotTakenBranch> {
 
 template <>
 struct DenseMapInfo<propeller::BinaryAddressFallthrough> {
-  static propeller::BinaryAddressFallthrough getEmptyKey() {
-    return {propeller::BinaryAddressDenseMapInfo::getEmptyKey(),
-            propeller::BinaryAddressDenseMapInfo::getEmptyKey()};
-  }
-  static propeller::BinaryAddressFallthrough getTombstoneKey() {
-    return {propeller::BinaryAddressDenseMapInfo::getTombstoneKey(),
-            propeller::BinaryAddressDenseMapInfo::getTombstoneKey()};
-  }
   static unsigned getHashValue(const propeller::BinaryAddressFallthrough& f) {
     return static_cast<unsigned>(hash_value(f));
   }

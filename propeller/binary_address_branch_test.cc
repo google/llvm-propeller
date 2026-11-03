@@ -29,11 +29,9 @@ using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 
 // `kInvalidBinaryAddress` (`UINT64_MAX`) legitimately appears as a branch
-// endpoint, so it must be usable as a key in LLVM containers. With older LLVM
-// versions, the default `DenseMapInfo<uint64_t>` reserves this value, so
-// containers of binary addresses must use `BinaryAddressDenseMapInfo`.
+// endpoint, so it must be usable as a key in LLVM containers.
 TEST(BinaryAddressDenseMapInfoTest, AcceptsInvalidBinaryAddressAsKey) {
-  llvm::DenseSet<uint64_t, BinaryAddressDenseMapInfo> addresses;
+  llvm::DenseSet<uint64_t> addresses;
   addresses.insert(kInvalidBinaryAddress);
   addresses.insert(0x1000);
   EXPECT_TRUE(addresses.contains(kInvalidBinaryAddress));

@@ -16,7 +16,6 @@
 #define PROPELLER_NODE_CHAIN_ASSEMBLY_H_
 
 #include <algorithm>
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -333,18 +332,6 @@ class NodeChainAssembly {
 namespace llvm {
 template <>
 struct DenseMapInfo<propeller::NodeChainPair> {
-  // Older LLVM versions reserve an empty key and a tombstone key. These keys
-  // use pointer values that never point to a valid `NodeChain`.
-  static propeller::NodeChainPair getEmptyKey() {
-    auto* chain =
-        reinterpret_cast<propeller::NodeChain*>(static_cast<uintptr_t>(-1));
-    return {.split_chain = chain, .unsplit_chain = chain};
-  }
-  static propeller::NodeChainPair getTombstoneKey() {
-    auto* chain =
-        reinterpret_cast<propeller::NodeChain*>(static_cast<uintptr_t>(-2));
-    return {.split_chain = chain, .unsplit_chain = chain};
-  }
   static unsigned getHashValue(const propeller::NodeChainPair& m) {
     return static_cast<unsigned>(hash_value(m));
   }
