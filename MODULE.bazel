@@ -77,7 +77,7 @@ bazel_dep(name = "xz", version = "5.4.5.bcr.9", repo_name = "llvm_xz")
 new_git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "new_git_repository")
 
 # LINT.IfChange(llvm_commit_hash)
-LLVM_COMMIT = "9d618fc0243103263ebf9bdcd08ef25e871d9c78"
+LLVM_COMMIT = "260f2eb1e4c2bc8dc996adba1170bb58a2f66177"
 # LINT.ThenChange(CMake/LLVM/LLVM.cmake:commit_hash)
 
 new_git_repository(
