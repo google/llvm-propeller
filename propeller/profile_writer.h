@@ -61,6 +61,7 @@ class PropellerProfileWriter {
     std::string function_name_specifier;
     std::string function_name_separator;
     std::string module_name_specifier;
+    std::string function_guid_specifier;
     std::string cluster_specifier;
     std::string clone_path_specifier;
     std::string prefetch_hint_specifier;
@@ -77,6 +78,7 @@ class PropellerProfileWriter {
                 .function_name_specifier = "!",
                 .function_name_separator = "/",
                 .module_name_specifier = " M=",
+                .function_guid_specifier = "#NOT_SUPPORTED",
                 .cluster_specifier = "!!",
                 .clone_path_specifier = "#NOT_SUPPORTED",
                 .prefetch_hint_specifier = "#NOT_SUPPORTED",
@@ -88,6 +90,7 @@ class PropellerProfileWriter {
                 .function_name_specifier = "f ",
                 .function_name_separator = " ",
                 .module_name_specifier = "m ",
+                .function_guid_specifier = "u ",
                 .cluster_specifier = "c",
                 .clone_path_specifier = "p",
                 .prefetch_hint_specifier = "i",

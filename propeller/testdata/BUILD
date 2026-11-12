@@ -81,6 +81,11 @@ exports_files([
     "sample_with_bb_hash_cc_directives.golden.txt",
     "sample_with_callsites.bin",  # generated using the "sample_bin" genrule.
     "sample_with_dropped_symbol.bin",
+    "sample_with_function_guids.bin",  # generated using the "sample_with_function_guids_bin" genrule.
+    "sample_with_function_guids.cc_profile.txt",
+    "sample_with_function_guids.inter_function.cc_profile.txt",
+    "sample_with_function_guids.inter_function.ld_profile.txt",
+    "sample_with_function_guids.ld_profile.txt",
     "simple_conditionals_join.protobuf",
     "simple_loop.protobuf",
     "simple_multi_function.protobuf",
@@ -342,6 +347,49 @@ genrule(
     # Branch stack sampling (requested above with `-b`) is x86-only for now.
     target_compatible_with = ["@platforms//cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
     toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
+)
+
+# This rule is used to manually generate sample_with_function_guids.bin, which has two functions
+# named `work` with internal linkage in different translation units. These functions are
+# distinguished by their function GUIDs in the BB address map.
+genrule(
+    name = "sample_with_function_guids_bin",
+    srcs = [
+        "same_name_static_functions_1.c",
+        "same_name_static_functions_2.c",
+        "same_name_static_functions_main.c",
+    ],
+    outs = ["sample_with_function_guids.bin.gen"],
+    cmd = "for src in $(SRCS); do " +
+          "obj=$(RULEDIR)/$$(basename $$src .c) ; " +
+          "$(CC) $(CC_FLAGS) -O2 -emit-llvm -c $$src -o $$obj.bc && " +
+          "$(execpath //third_party/llvm/llvm-project/llvm:llc) -O2 -filetype=obj " +
+          "-relocation-model=pic -basic-block-address-map " +
+          "-basic-block-address-map-emit-func-guid $$obj.bc -o $$obj.o || exit 1 ; " +
+          "done ; " +
+          "$(CC) $(CC_FLAGS) -Wl,-build-id -pie $(RULEDIR)/same_name_static_functions_1.o " +
+          "$(RULEDIR)/same_name_static_functions_2.o $(RULEDIR)/same_name_static_functions_main.o " +
+          "-o $@",
+    tags = [
+        "manual",
+    ],
+    target_compatible_with = ["@platforms//cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
+    toolchains = _LLVM_PROPELLER_TESTDATA_TOOLCHAINS,
+    tools = ["@llvm-project//llvm:llc"],
+)
+
+# This rule is used to manually generate sample_with_function_guids.perfdata. This requires LBR
+# support. Use `--spawn_strategy=local` when the local machine supports LBR.
+genrule(
+    name = "sample_with_function_guids_perfdata",
+    srcs = [":sample_with_function_guids_bin"],
+    outs = ["sample_with_function_guids.perfdata.gen"],
+    cmd = "/usr/bin/perf record -o $@ -e cycles:u -b -- $(execpath $(location :sample_with_function_guids_bin))",
+    tags = [
+        "manual",
+    ],
+    # Branch stack sampling (requested above with `-b`) is x86-only for now.
+    target_compatible_with = ["@platforms//cpu:x86_64"],  # buildifier: disable=platform-specific-binaries
 )
 
 # This rule is used to manually generate sample_with_dropped_symbol.bin which is the same as

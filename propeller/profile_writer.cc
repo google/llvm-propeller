@@ -20,6 +20,7 @@
 #include <optional>
 #include <ostream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -29,10 +30,12 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "propeller/bb_addr_map.h"
 #include "propeller/bb_addr_map.pb.h"
 #include "propeller/cfg.h"
@@ -167,6 +170,66 @@ void WriteBBHash(const ControlFlowGraph& cfg, std::ofstream& out) {
   out << "\n";
 }
 
+// Suffixes of the symbols of the function parts created by basic block
+// sections. LLVM names the symbol of the cold part "<func_name>.cold" and the
+// symbol of any other part that doesn't begin with the function entry
+// "<func_name>.__part.<N>" (see `MachineBasicBlock::getSymbol`).
+constexpr std::string_view kColdSymbolSuffix = ".cold";
+constexpr std::string_view kFunctionPartSymbolSuffix = ".__part.";
+
+// Writes the symbols for the hot chains and cold parts of functions to the ld
+// profile. Functions with the same name (which are distinguished by their GUIDs
+// in the cc profile) map to the same linker symbols. Since the linker cannot
+// distinguish them and only honors the first occurrence of every symbol, this
+// writes each symbol only once. The function names passed to this class must
+// outlive it.
+class LDProfileSymbolWriter {
+ public:
+  explicit LDProfileSymbolWriter(std::ostream& out) : out_(out) {}
+
+  // Not copyable or movable.
+  LDProfileSymbolWriter(const LDProfileSymbolWriter&) = delete;
+  LDProfileSymbolWriter& operator=(const LDProfileSymbolWriter&) = delete;
+
+  // Writes the symbol for a part of the function named `func_name`, which is
+  // "<func_name>.__part.<chain_id>", where `chain_id` is the index of the
+  // corresponding chain in the function. `chain_id` is empty for the part
+  // beginning with the function entry, whose symbol is `func_name` itself.
+  void WriteFunctionPartSymbol(llvm::StringRef func_name,
+                               std::optional<unsigned> chain_id) {
+    if (!function_part_symbols_.insert({func_name, chain_id}).second) return;
+    out_ << std::string_view(func_name);
+    if (chain_id.has_value())
+      out_ << kFunctionPartSymbolSuffix << chain_id.value();
+    out_ << "\n";
+  }
+
+  // Writes the symbol for the cold part of the function named `func_name`.
+  // `entry_is_cold` specifies whether the function entry is in the cold part,
+  // i.e., it is not in any of the function's hot chains.
+  void WriteColdSymbol(llvm::StringRef func_name, bool entry_is_cold) {
+    // If the entry node is cold, function name can serve as the cold symbol
+    // name. So we don't need the ".cold" suffix. This is the same symbol as the
+    // one for the function part beginning with the function entry, which may
+    // already be written for another function with the same name.
+    if (entry_is_cold) {
+      WriteFunctionPartSymbol(func_name, /*chain_id=*/std::nullopt);
+      return;
+    }
+    if (cold_symbols_.insert(func_name).second)
+      out_ << std::string_view(func_name) << kColdSymbolSuffix << "\n";
+  }
+
+ private:
+  std::ostream& out_;
+  // (function name, chain id) pairs of the function part symbols already
+  // written.
+  llvm::DenseSet<std::pair<llvm::StringRef, std::optional<unsigned>>>
+      function_part_symbols_;
+  // Function names whose ".cold" symbols are already written.
+  llvm::StringSet<> cold_symbols_;
+};
+
 }  // namespace
 
 void PropellerProfileWriter::WriteCfgProfile(const ControlFlowGraph& cfg,
@@ -206,8 +269,14 @@ void PropellerProfileWriter::WritePrefetchInfo(
 
 absl::Status PropellerProfileWriter::Write(
     const PropellerProfile& profile) const {
+  if (options_.write_function_guid() &&
+      profile_encoding_.version == ClusterEncodingVersion::VERSION_0) {
+    return absl::FailedPreconditionError(
+        "function GUID for version 0 is not supported");
+  }
   std::ofstream cc_profile_os(options_.cluster_out_name());
   std::ofstream ld_profile_os(options_.symbol_order_out_name());
+  LDProfileSymbolWriter ld_profile_writer(ld_profile_os);
   if (profile_encoding_.version != ClusterEncodingVersion::VERSION_0) {
     cc_profile_os << profile_encoding_.version_specifier << "\n";
   }
@@ -248,6 +317,15 @@ absl::Status PropellerProfileWriter::Write(
         // specifier on a separate line.
         cc_profile_os << profile_encoding_.module_name_specifier
                       << cfg->module_name().value().str() << "\n";
+      }
+      // Print the function GUID (in hex) before the function name specifier
+      // on a separate line. Similar to the module name, this allows
+      // distinguishing internal-linkage functions with the same name.
+      if (options_.write_function_guid() && cfg->function_guid() != 0) {
+        cc_profile_os << profile_encoding_.function_guid_specifier
+                      << llvm::utohexstr(cfg->function_guid(),
+                                         /*LowerCase=*/true)
+                      << "\n";
       }
       // Print all alias names of the function.
       cc_profile_os << profile_encoding_.function_name_specifier
@@ -343,10 +421,7 @@ absl::Status PropellerProfileWriter::Write(
       // guarantees we get the right order regardless of which function name is
       // picked by the compiler.
       for (auto& func_name : func_names) {
-        ld_profile_os << func_name.str();
-        if (chain_id.has_value())
-          ld_profile_os << ".__part." << chain_id.value();
-        ld_profile_os << "\n";
+        ld_profile_writer.WriteFunctionPartSymbol(func_name, chain_id);
       }
     }
 
@@ -365,19 +440,15 @@ absl::Status PropellerProfileWriter::Write(
       for (const FunctionLayoutInfo::BbChain& chain : layout_info.bb_chains)
         num_bbs_in_chains += chain.GetNumBbs();
       if (num_bbs_in_chains == cfg->nodes().size()) continue;
-      // Check if the function entry is in the chains. The entry node always
-      // begins its chain. So this simply checks the first node in every
-      // chain.
-      bool entry_is_in_chains = absl::c_any_of(
+      // Check if the function entry is cold, i.e., it is not in any of the
+      // chains. The entry node always begins its chain. So this simply checks
+      // the first node in every chain.
+      bool entry_is_cold = absl::c_none_of(
           layout_info.bb_chains, [](const FunctionLayoutInfo::BbChain& chain) {
             return chain.GetFirstBb().intra_cfg_id.bb_index == 0;
           });
       for (auto& func_name : cfg->names()) {
-        ld_profile_os << func_name.str();
-        // If the entry node is not in chains, function name can serve as the
-        // cold symbol name. So we don't need the ".cold" suffix.
-        if (entry_is_in_chains) ld_profile_os << ".cold";
-        ld_profile_os << "\n";
+        ld_profile_writer.WriteColdSymbol(func_name, entry_is_cold);
       }
     }
   }

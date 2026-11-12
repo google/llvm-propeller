@@ -1747,6 +1747,11 @@ cc_test(
         "//propeller/testdata:sample_with_bb_hash.perfdata",
         "//propeller/testdata:sample_with_bb_hash_cc_directives.golden.txt",
         "//propeller/testdata:sample_with_callsites.bin",
+        "//propeller/testdata:sample_with_function_guids.bin",
+        "//propeller/testdata:sample_with_function_guids.cc_profile.txt",
+        "//propeller/testdata:sample_with_function_guids.inter_function.cc_profile.txt",
+        "//propeller/testdata:sample_with_function_guids.inter_function.ld_profile.txt",
+        "//propeller/testdata:sample_with_function_guids.ld_profile.txt",
     ],
     deps = [
         ":bb_addr_map_cc_proto",
