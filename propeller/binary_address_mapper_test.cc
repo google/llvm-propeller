@@ -54,6 +54,7 @@ using ::testing::AllOf;
 using ::testing::Contains;
 using ::testing::ElementsAre;
 using ::testing::Eq;
+using ::testing::Field;
 using ::testing::FieldsAre;
 using ::testing::IsEmpty;
 using ::testing::Key;
@@ -581,6 +582,100 @@ Symbols:
     Size:    0x6
 )yaml";
 
+// An ELF binary with pairs of functions with the same name:
+//   * "foo": Functions with different GUIDs.
+//   * "bar": Functions with the same GUID.
+//   * "baz": Functions where only one has a GUID.
+constexpr llvm::StringLiteral kDuplicateNamesWithGuidsYaml = R"yaml(
+--- !ELF
+FileHeader:
+  Class:   ELFCLASS64
+  Data:    ELFDATA2LSB
+  Type:    ET_EXEC
+  Machine: EM_X86_64
+Sections:
+  - Name:    .text
+    Type:    SHT_PROGBITS
+    Flags:   [ SHF_ALLOC, SHF_EXECINSTR ]
+    Address: 0x1000
+    Size:    0x60
+  - Name: .llvm_bb_addr_map
+    Type: SHT_LLVM_BB_ADDR_MAP
+    Link: .text
+    Entries:
+      - Version:  6
+        Feature:  0x100
+        FuncGUID: 0x1111
+        BBRanges:
+          - BaseAddress: 0x1000
+            BBEntries:
+              - { ID: 0, AddressOffset: 0x0, Size: 0x10, Metadata: 0x1 }
+      - Version:  6
+        Feature:  0x100
+        FuncGUID: 0x2222
+        BBRanges:
+          - BaseAddress: 0x1010
+            BBEntries:
+              - { ID: 0, AddressOffset: 0x0, Size: 0x10, Metadata: 0x1 }
+      - Version:  6
+        Feature:  0x100
+        FuncGUID: 0x3333
+        BBRanges:
+          - BaseAddress: 0x1020
+            BBEntries:
+              - { ID: 0, AddressOffset: 0x0, Size: 0x10, Metadata: 0x1 }
+      - Version:  6
+        Feature:  0x100
+        FuncGUID: 0x3333
+        BBRanges:
+          - BaseAddress: 0x1030
+            BBEntries:
+              - { ID: 0, AddressOffset: 0x0, Size: 0x10, Metadata: 0x1 }
+      - Version:  6
+        Feature:  0x100
+        FuncGUID: 0x4444
+        BBRanges:
+          - BaseAddress: 0x1040
+            BBEntries:
+              - { ID: 0, AddressOffset: 0x0, Size: 0x10, Metadata: 0x1 }
+      - Version:  6
+        BBRanges:
+          - BaseAddress: 0x1050
+            BBEntries:
+              - { ID: 0, AddressOffset: 0x0, Size: 0x10, Metadata: 0x1 }
+Symbols:
+  - Name:    'foo (1)'
+    Type:    STT_FUNC
+    Section: .text
+    Value:   0x1000
+    Size:    0x10
+  - Name:    'foo (2)'
+    Type:    STT_FUNC
+    Section: .text
+    Value:   0x1010
+    Size:    0x10
+  - Name:    'bar (1)'
+    Type:    STT_FUNC
+    Section: .text
+    Value:   0x1020
+    Size:    0x10
+  - Name:    'bar (2)'
+    Type:    STT_FUNC
+    Section: .text
+    Value:   0x1030
+    Size:    0x10
+  - Name:    'baz (1)'
+    Type:    STT_FUNC
+    Section: .text
+    Value:   0x1040
+    Size:    0x10
+  - Name:    'baz (2)'
+    Type:    STT_FUNC
+    Section: .text
+    Value:   0x1050
+    Size:    0x10
+)yaml";
+
 // The ELF binary built from testdata/special_case.c, which has an empty basic
 // block (`foo`'s BB 3) followed by a non-empty one at the same address.
 constexpr llvm::StringLiteral kSpecialCaseYaml = R"yaml(
@@ -1061,6 +1156,48 @@ TEST(BinaryAddressMapper, DuplicateUniqNames) {
   EXPECT_THAT(binary_address_mapper->selected_functions(),
               ElementsAre(0, 2, 4));
   EXPECT_EQ(stats.bbaddrmap_stats.duplicate_symbols, 3);
+}
+
+TEST(BinaryAddressMapper, DuplicateNamesDroppedWhenNotWritingGuids) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
+                       GetBinaryContentFromYaml(kDuplicateNamesWithGuidsYaml));
+  PropellerStats stats;
+  PropellerOptions options;
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BinaryAddressMapper> binary_address_mapper,
+      BuildBinaryAddressMapper(options, *binary_content, stats));
+  // Function GUIDs are read from the BB address map.
+  EXPECT_THAT(binary_address_mapper->bb_addr_map(),
+              ElementsAre(Field(&BBAddrMap::FuncGUID, uint64_t{0x1111}),
+                          Field(&BBAddrMap::FuncGUID, uint64_t{0x2222}),
+                          Field(&BBAddrMap::FuncGUID, uint64_t{0x3333}),
+                          Field(&BBAddrMap::FuncGUID, uint64_t{0x3333}),
+                          Field(&BBAddrMap::FuncGUID, uint64_t{0x4444}),
+                          Field(&BBAddrMap::FuncGUID, uint64_t{0})));
+  // Without GUIDs in the profile, functions with the same name cannot be
+  // distinguished. So all of them are dropped.
+  EXPECT_THAT(binary_address_mapper->selected_functions(), IsEmpty());
+  EXPECT_EQ(stats.bbaddrmap_stats.duplicate_symbols, 6);
+}
+
+TEST(BinaryAddressMapper, DuplicateNamesDistinguishedByGuids) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
+                       GetBinaryContentFromYaml(kDuplicateNamesWithGuidsYaml));
+  PropellerStats stats;
+  PropellerOptions options;
+  options.set_write_function_guid(true);
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BinaryAddressMapper> binary_address_mapper,
+      BuildBinaryAddressMapper(options, *binary_content, stats));
+  // Both "foo" functions are kept as their GUIDs are different. Both "baz"
+  // functions are kept as well, since one has a GUID and the other does not.
+  // Both "bar" functions are dropped since they have the same GUID (even though
+  // they are identical).
+  EXPECT_THAT(binary_address_mapper->selected_functions(),
+              ElementsAre(0, 1, 4, 5));
+  EXPECT_EQ(stats.bbaddrmap_stats.duplicate_symbols, 2);
 }
 
 TEST(BinaryAddressMapper, CheckNoHotFunctions) {

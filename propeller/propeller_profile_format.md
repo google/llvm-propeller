@@ -18,6 +18,7 @@ Profile for each function is encoded as follows:
 
 ```
 m <module_name>
+u <function_guid>
 f <function_name_1> <function_name_2> ...
 c <bb_id_1> <bb_id_2> <bb_id_3>
 c <bb_id_4> <bb_id_5>
@@ -37,6 +38,28 @@ may appear in different modules. If provided, the following function profile
 only applies to a function with a matching name and module. Alternatively,
 compiling with `-funique-internal-linkage-names` ensures unique names for
 internal linkage functions, avoiding the need for module name disambiguation.
+
+### `u`: Function GUID
+
+A line starting with `u` is optional and specifies the GUID of the function
+(`llvm::GlobalValue::GUID`) in hex format:
+
+```
+u <function_guid>
+```
+
+Similar to the module name, this is used to distinguish internal-linkage
+functions with the same name. If provided, the following function profile only
+applies to a function with a matching name and GUID. Propeller reads function
+GUIDs from the `SHT_LLVM_BB_ADDR_MAP` section (version 6 or later, with the
+`FuncGUID` feature) and only writes this line when the `write_function_guid`
+option is set. With this option, the GUID acts like the `.__uniq.` suffix of
+`-funique-internal-linkage-names`: functions with the same name but different
+GUIDs are kept in the profile, rather than being dropped as indistinguishable.
+
+NOTE: The `u` specifier is not supported by the compiler yet, so
+`write_function_guid` should not be set for profiles that are passed to the
+compiler.
 
 ### `f`: Function Name
 

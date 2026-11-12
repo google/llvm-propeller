@@ -33,7 +33,7 @@ message InputProfile {
   ProfileType type = 2;
 }
 
-// Next Available: 19.
+// Next Available: 20.
 message PropellerOptions {
   // binary file name.
   string binary_name = 1;
@@ -92,6 +92,11 @@ message PropellerOptions {
 
   // Write the basic block hash in the cluster file.
   bool write_bb_hash = 18 [default = false];
+
+  // Write the function GUIDs (when encoded in the binary's BB address map) in
+  // the cluster file. This allows distinguishing internal-linkage functions
+  // with the same name. Only supported for `VERSION_1` and above.
+  bool write_function_guid = 19 [default = false];
 }
 
 // Next Available: 15.

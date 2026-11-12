@@ -58,6 +58,22 @@ struct BbRangeHandle {
   int range_index = 0;
 };
 
+// Identifies a function by its name and GUID, for the purpose of applying its
+// profile. `guid` is zero when the function has no GUID or when GUIDs are not
+// used to identify functions.
+struct FunctionIdentity {
+  StringRef name;
+  uint64_t guid = 0;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const FunctionIdentity& identity) {
+    return H::combine(std::move(h), identity.name, identity.guid);
+  }
+  bool operator==(const FunctionIdentity& other) const {
+    return name == other.name && guid == other.guid;
+  }
+};
+
 // Returns the BB range handles for BB ranges in `bb_addr_map`, sorted by
 // their base address. If `selected_functions != nullptr` only returns the
 // BB range handles for the functions in the set. Otherwise, returns all BB
@@ -192,7 +208,9 @@ class BinaryAddressMapperBuilder {
   void FilterNonTextFunctions(absl::btree_set<int>& selected_functions) const;
 
   // Removes all functions with duplicate names from the specified function
-  // indices. Must be called after `FilterNoNameFunctions`.
+  // indices. When `write_function_guid` is set, functions with the same name
+  // but different GUIDs are not considered duplicates. Returns the number of
+  // duplicate symbols found. Must be called after `FilterNoNameFunctions`.
   int FilterDuplicateNameFunctions(
       absl::btree_set<int>& selected_functions) const;
 
@@ -707,16 +725,26 @@ void BinaryAddressMapperBuilder::FilterNonTextFunctions(
 // those profiles back to their object files.
 // This function removes all such functions which have the same name as other
 // functions in the binary.
+// When function GUIDs are written in the cc profile (`write_function_guid`),
+// the GUID acts like the ".__uniq." suffix: functions with the same name but
+// different GUIDs (including no GUID) are distinguishable and thus are kept.
 int BinaryAddressMapperBuilder::FilterDuplicateNameFunctions(
     absl::btree_set<int>& selected_functions) const {
   int duplicate_symbols = 0;
-  absl::flat_hash_map<StringRef, std::vector<int>> name_to_function_index;
+  // Maps every function identity to the indices of the functions with that
+  // identity.
+  absl::flat_hash_map<FunctionIdentity, std::vector<int>>
+      identity_to_function_index;
   for (int func_index : selected_functions) {
-    for (StringRef name : symbol_info_map_.at(func_index).aliases)
-      name_to_function_index[name].push_back(func_index);
+    uint64_t guid =
+        options_->write_function_guid() ? bb_addr_map_[func_index].FuncGUID : 0;
+    for (StringRef name : symbol_info_map_.at(func_index).aliases) {
+      identity_to_function_index[FunctionIdentity{.name = name, .guid = guid}]
+          .push_back(func_index);
+    }
   }
 
-  for (const auto& [name, func_indices] : name_to_function_index) {
+  for (const auto& [identity, func_indices] : identity_to_function_index) {
     if (func_indices.size() <= 1) continue;
     duplicate_symbols += func_indices.size();
     for (auto func_idx : func_indices) selected_functions.erase(func_idx);
