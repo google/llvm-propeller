@@ -1349,6 +1349,7 @@ cc_test(
         ":status_testing_macros",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
 

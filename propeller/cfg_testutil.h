@@ -62,6 +62,8 @@ struct CfgArg {
   llvm::StringRef function_name;
   const std::vector<NodeArg> node_args;
   const std::vector<IntraEdgeArg> edge_args;
+  // Zero means the function has no GUID.
+  uint64_t function_guid = 0;
 };
 
 struct MultiCfgArg {

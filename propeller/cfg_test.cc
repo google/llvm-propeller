@@ -14,12 +14,15 @@
 
 #include "propeller/cfg.h"
 
+#include <cstdint>
 #include <memory>
 #include <sstream>
 
 #include "absl/container/flat_hash_map.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "propeller/cfg_edge_kind.h"
 #include "propeller/cfg_id.h"
 #include "propeller/cfg_matchers.h"
@@ -31,10 +34,13 @@ namespace {
 
 using ::testing::AllOf;
 using ::testing::ElementsAre;
+using ::testing::Eq;
 using ::testing::FieldsAre;
 using ::testing::IsEmpty;
 using ::testing::Key;
+using ::testing::Optional;
 using ::testing::Pointee;
+using ::testing::Property;
 using ::testing::UnorderedElementsAre;
 
 TEST(LlvmPropellerCfg, CalculateNodeFreqsWithCallsAndReturns) {
@@ -247,6 +253,28 @@ TEST(LlvmPropellerCfg, CloneCfg) {
                                           NodeIntraIdIs(IntraCfgId{1, 0}), 100,
                                           CFGEdgeKind::kBranchOrFallthough)}),
           CfgInterEdgesMatcher())));
+}
+
+TEST(LlvmPropellerCfg, ClonesPreserveFunctionInfo) {
+  constexpr uint64_t kFooGuid = 0xfedcba9876543210;
+  ControlFlowGraph cfg(
+      /*section_name=*/".foo_section", /*function_index=*/3,
+      /*module_name=*/"foo.cc", /*function_guid=*/kFooGuid,
+      /*names=*/llvm::SmallVector<llvm::StringRef, 2>{"foo", "foo_alias"});
+  auto has_function_info_of_foo = AllOf(
+      Property("section_name", &ControlFlowGraph::section_name,
+               Eq(".foo_section")),
+      Property("function_index", &ControlFlowGraph::function_index, Eq(3)),
+      Property("module_name", &ControlFlowGraph::module_name,
+               Optional(Eq("foo.cc"))),
+      Property("names", &ControlFlowGraph::names,
+               ElementsAre("foo", "foo_alias")),
+      Property("function_guid", &ControlFlowGraph::function_guid,
+               Eq(kFooGuid)));
+  ASSERT_THAT(cfg, has_function_info_of_foo);
+
+  EXPECT_THAT(CloneCfg(cfg), Pointee(has_function_info_of_foo));
+  EXPECT_THAT(CfgBuilder(&cfg).Build(), Pointee(has_function_info_of_foo));
 }
 
 TEST(LlvmPropellerCfg, GetNodeFrequencyStats) {

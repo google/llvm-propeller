@@ -110,10 +110,12 @@ std::unique_ptr<ProtoProgramCfg> BuildFromCfgProto(
       id_to_node_map.try_emplace(node->inter_cfg_id(), node.get());
       nodes.push_back(std::move(node));
     }
-    CHECK(cfgs.emplace(cfg_pb.function_index(),
-                       std::make_unique<ControlFlowGraph>(
-                           cfg_pb.section_name(), cfg_pb.function_index(),
-                           std::nullopt, std::move(names), std::move(nodes)))
+    CHECK(cfgs.emplace(
+                  cfg_pb.function_index(),
+                  std::make_unique<ControlFlowGraph>(
+                      cfg_pb.section_name(), cfg_pb.function_index(),
+                      /*module_name=*/std::nullopt,
+                      /*function_guid=*/0, std::move(names), std::move(nodes)))
               .second);
   }
 

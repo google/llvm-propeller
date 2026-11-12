@@ -178,8 +178,8 @@ std::unique_ptr<ControlFlowGraph> CloneCfg(const ControlFlowGraph& cfg) {
   for (const std::unique_ptr<CFGNode>& node : cfg.nodes())
     nodes.push_back(node->Clone(node->clone_number(), nodes.size()));
   auto cfg_clone = std::make_unique<ControlFlowGraph>(
-      cfg.section_name(), cfg.function_index(), cfg.module_name(), cfg.names(),
-      std::move(nodes));
+      cfg.section_name(), cfg.function_index(), cfg.module_name(),
+      cfg.function_guid(), cfg.names(), std::move(nodes));
   // Now copy the intra-function edges.
   for (const std::unique_ptr<CFGEdge>& edge : cfg.intra_edges()) {
     CHECK_EQ(edge->src()->function_index(), edge->sink()->function_index());
@@ -242,8 +242,8 @@ std::unique_ptr<ControlFlowGraph> CfgBuilder::Build() && {
   ApplyIntraCfgChanges(intra_edges);
   return std::make_unique<ControlFlowGraph>(
       cfg_->section_name(), cfg_->function_index(), cfg_->module_name(),
-      cfg_->names(), std::move(nodes_), std::move(intra_edges),
-      std::move(clone_paths_));
+      cfg_->function_guid(), cfg_->names(), std::move(nodes_),
+      std::move(intra_edges), std::move(clone_paths_));
 }
 
 // Clones the basic blocks along the path `path_to_clone` given path

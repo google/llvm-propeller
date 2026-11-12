@@ -100,8 +100,8 @@ absl::StatusOr<std::unique_ptr<ProgramCfg>> ProgramCfgBuilder::Build(
             ? symbol_info.section_name.substr(0, 5)
             : symbol_info.section_name;
     auto cfg = std::make_unique<ControlFlowGraph>(
-        section_name, func_index, module_name, symbol_info.aliases,
-        CreateCfgNodes(func_index, func_bb_addr_map));
+        section_name, func_index, module_name, func_bb_addr_map.FuncGUID,
+        symbol_info.aliases, CreateCfgNodes(func_index, func_bb_addr_map));
     // Setup mapping from Ids to nodes.
     for (const std::unique_ptr<CFGNode>& node : cfg->nodes())
       node_map.insert({node->inter_cfg_id(), node.get()});

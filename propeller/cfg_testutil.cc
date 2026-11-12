@@ -84,6 +84,7 @@ TestCfgBuilder::Build() && {
   for (const auto& cfg_arg : multi_cfg_arg_.cfg_args) {
     auto cfg = std::make_unique<ControlFlowGraph>(
         cfg_arg.section_name, cfg_arg.function_index, std::nullopt,
+        cfg_arg.function_guid,
         llvm::SmallVector<llvm::StringRef, 1>({cfg_arg.function_name}),
         CreateNodesForCfg(cfg_arg.function_index, cfg_arg.node_args));
     CreateIntraEdgesForCfg(*cfg, cfg_arg.edge_args);

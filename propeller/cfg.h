@@ -191,20 +191,25 @@ class ControlFlowGraph {
   };
   ControlFlowGraph(llvm::StringRef section_name, int function_index,
                    std::optional<llvm::StringRef> module_name,
+                   uint64_t function_guid,
                    const llvm::SmallVectorImpl<llvm::StringRef>& names)
       : section_name_(section_name),
         function_index_(function_index),
         module_name_(module_name),
+        function_guid_(function_guid),
         names_(names.begin(), names.end()) {}
   ControlFlowGraph(llvm::StringRef section_name, int function_index,
                    std::optional<llvm::StringRef> module_name,
+                   uint64_t function_guid,
                    llvm::SmallVectorImpl<llvm::StringRef>&& names)
       : section_name_(section_name),
         function_index_(function_index),
         module_name_(module_name),
+        function_guid_(function_guid),
         names_(std::move(names)) {}
   ControlFlowGraph(llvm::StringRef section_name, int function_index,
                    std::optional<llvm::StringRef> module_name,
+                   uint64_t function_guid,
                    const llvm::SmallVectorImpl<llvm::StringRef>& names,
                    std::vector<std::unique_ptr<CFGNode>> nodes,
                    std::vector<std::unique_ptr<CFGEdge>> intra_edges = {},
@@ -212,6 +217,7 @@ class ControlFlowGraph {
       : section_name_(section_name),
         function_index_(function_index),
         module_name_(module_name),
+        function_guid_(function_guid),
         names_(names.begin(), names.end()),
         nodes_(std::move(nodes)),
         clone_paths_(std::move(clone_paths)),
@@ -267,6 +273,9 @@ class ControlFlowGraph {
   const std::optional<llvm::StringRef>& module_name() const {
     return module_name_;
   }
+
+  // Returns the GUID of this function, or zero if it has no GUID.
+  uint64_t function_guid() const { return function_guid_; }
 
   llvm::StringRef GetPrimaryName() const {
     CHECK(!names_.empty());
@@ -414,6 +423,13 @@ class ControlFlowGraph {
   int function_index_;
 
   std::optional<llvm::StringRef> module_name_;
+
+  // GUID of the function (as computed by `llvm::Function::getGUID`), read from
+  // the SHT_LLVM_BB_ADDR_MAP section. Zero means the function has no GUID
+  // (e.g., it is a global function or the binary does not encode function
+  // GUIDs). This can be used to distinguish internal-linkage functions with the
+  // same name.
+  uint64_t function_guid_ = 0;
 
   // Function names associated with this CFG: The first name is the primary
   // function name and the rest are aliases. The primary name is necessary.
