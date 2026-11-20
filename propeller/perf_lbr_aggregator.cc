@@ -20,10 +20,10 @@
 #include <string>
 #include <utility>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "propeller/binary_address_branch.h"
@@ -87,7 +87,7 @@ PerfLbrAggregator::CheckLbrAddress(const LbrAggregation& lbr_aggregation,
   ASSIGN_OR_RETURN(std::unique_ptr<MiniDisassembler> disassembler,
                    MiniDisassembler::Create(binary_content.object_file.get()));
 
-  absl::flat_hash_map<int64_t, int64_t> counter_sum_by_source_address;
+  llvm::DenseMap<int64_t, int64_t> counter_sum_by_source_address;
   for (const auto& [branch, counter] : lbr_aggregation.branch_counters) {
     if (branch.from == kInvalidBinaryAddress) continue;
     counter_sum_by_source_address[branch.from] += counter;
