@@ -28,13 +28,14 @@
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
@@ -65,12 +66,21 @@ struct FunctionIdentity {
   StringRef name;
   uint64_t guid = 0;
 
-  template <typename H>
-  friend H AbslHashValue(H h, const FunctionIdentity& identity) {
-    return H::combine(std::move(h), identity.name, identity.guid);
-  }
   bool operator==(const FunctionIdentity& other) const {
     return name == other.name && guid == other.guid;
+  }
+};
+
+// `DenseMapInfo` for `FunctionIdentity`. This is a separate key info type
+// because `llvm::DenseMapInfo` cannot be specialized inside this anonymous
+// namespace.
+struct FunctionIdentityInfo {
+  static unsigned getHashValue(const FunctionIdentity& identity) {
+    return llvm::hash_combine(identity.name, identity.guid);
+  }
+  static bool isEqual(const FunctionIdentity& lhs,
+                      const FunctionIdentity& rhs) {
+    return lhs == rhs;
   }
 };
 
@@ -135,11 +145,10 @@ std::vector<BbHandle> GetBbHandles(absl::Span<const BBAddrMap> bb_addr_map,
 // function addresses to their symbol info and a list of BBAddrMap for all
 // functions. It takes the symbol info map by value so that its values can be
 // moved into the returned map.
-absl::flat_hash_map<int, FunctionSymbolInfo> GetSymbolInfoMapByFunctionIndex(
-    absl::flat_hash_map<uint64_t, FunctionSymbolInfo> symbol_info_map,
+llvm::DenseMap<int, FunctionSymbolInfo> GetSymbolInfoMapByFunctionIndex(
+    llvm::DenseMap<uint64_t, FunctionSymbolInfo> symbol_info_map,
     absl::Span<const BBAddrMap> bb_addr_map) {
-  absl::flat_hash_map<int, FunctionSymbolInfo>
-      symbol_info_map_by_function_index;
+  llvm::DenseMap<int, FunctionSymbolInfo> symbol_info_map_by_function_index;
   for (int function_index = 0; function_index != bb_addr_map.size();
        ++function_index) {
     auto iter =
@@ -151,8 +160,8 @@ absl::flat_hash_map<int, FunctionSymbolInfo> GetSymbolInfoMapByFunctionIndex(
                    << " has no associated symbol table entry!";
       continue;
     }
-    symbol_info_map_by_function_index.emplace(function_index,
-                                              std::move(iter->second));
+    symbol_info_map_by_function_index.try_emplace(function_index,
+                                                  std::move(iter->second));
   }
   return symbol_info_map_by_function_index;
 }
@@ -161,7 +170,7 @@ absl::flat_hash_map<int, FunctionSymbolInfo> GetSymbolInfoMapByFunctionIndex(
 class BinaryAddressMapperBuilder {
  public:
   BinaryAddressMapperBuilder(
-      absl::flat_hash_map<uint64_t, FunctionSymbolInfo> symbol_info_map,
+      llvm::DenseMap<uint64_t, FunctionSymbolInfo> symbol_info_map,
       std::vector<llvm::object::BBAddrMap> bb_addr_map, PropellerStats& stats,
       const PropellerOptions* absl_nonnull options
           ABSL_ATTRIBUTE_LIFETIME_BOUND);
@@ -176,22 +185,21 @@ class BinaryAddressMapperBuilder {
   // `*hot_addresses`. Otherwise, all functions are included. Does not take
   // ownership of `*hot_addresses`, which must outlive this call.
   std::unique_ptr<BinaryAddressMapper> Build(
-      const absl::flat_hash_set<uint64_t>* hot_addresses) &&;
+      const llvm::DenseSet<uint64_t>* hot_addresses) &&;
 
  private:
   // Returns a list of hot functions based on addresses `hot_addresses`.
   // The returned `btree_set` specifies the hot functions by their index in
   // `bb_addr_map()`.
   std::set<int> CalculateHotFunctions(
-      const absl::flat_hash_set<uint64_t>& hot_addresses);
+      const llvm::DenseSet<uint64_t>& hot_addresses);
 
   // Removes unwanted functions from the BB address map and symbol table, and
   // returns the remaining functions by their indexes in `bb_addr_map()`.
   // This function removes all non-text functions, functions without associated
   // names, and those with duplicate names. Selects all functions when
   // `hot_addresses == nullptr`.
-  std::set<int> SelectFunctions(
-      const absl::flat_hash_set<uint64_t>* hot_addresses);
+  std::set<int> SelectFunctions(const llvm::DenseSet<uint64_t>* hot_addresses);
 
   // Removes all functions that are not included (selected) in the
   // `selected_functions` set. Clears their associated BB entries from
@@ -219,7 +227,7 @@ class BinaryAddressMapperBuilder {
   std::vector<BbRangeHandle> bb_range_handles_;
 
   // Map from every function index (in `bb_addr_map_`) to its symbol info.
-  absl::flat_hash_map<int, FunctionSymbolInfo> symbol_info_map_;
+  llvm::DenseMap<int, FunctionSymbolInfo> symbol_info_map_;
 
   PropellerStats* stats_;
   const PropellerOptions* options_;
@@ -496,7 +504,7 @@ class IntraFunctionPathsExtractor {
   int current_path_index_ = -1;
   // Call stack map indexed by function index, mapping to path indices in
   // `paths_` in the calling stack order.
-  absl::flat_hash_map<int, std::stack<int>> call_stack_;
+  llvm::DenseMap<int, std::stack<int>> call_stack_;
 };
 }  // namespace
 
@@ -651,7 +659,7 @@ bool BinaryAddressMapper::CanFallThrough(int from, int to) const {
 // For each lbr record addr1->addr2, find function1/2 that contain addr1/addr2
 // and add function1/2's index into the returned set.
 std::set<int> BinaryAddressMapperBuilder::CalculateHotFunctions(
-    const absl::flat_hash_set<uint64_t>& hot_addresses) {
+    const llvm::DenseSet<uint64_t>& hot_addresses) {
   std::set<int> hot_functions;
   auto add_to_hot_functions = [this, &hot_functions](uint64_t binary_address) {
     auto it = absl::c_upper_bound(
@@ -731,7 +739,7 @@ int BinaryAddressMapperBuilder::FilterDuplicateNameFunctions(
   int duplicate_symbols = 0;
   // Maps every function identity to the indices of the functions with that
   // identity.
-  absl::flat_hash_map<FunctionIdentity, std::vector<int>>
+  llvm::DenseMap<FunctionIdentity, std::vector<int>, FunctionIdentityInfo>
       identity_to_function_index;
   for (int func_index : selected_functions) {
     uint64_t guid =
@@ -751,7 +759,7 @@ int BinaryAddressMapperBuilder::FilterDuplicateNameFunctions(
 }
 
 std::set<int> BinaryAddressMapperBuilder::SelectFunctions(
-    const absl::flat_hash_set<uint64_t>* hot_addresses) {
+    const llvm::DenseSet<uint64_t>* hot_addresses) {
   std::set<int> selected_functions;
   if (hot_addresses != nullptr) {
     selected_functions = CalculateHotFunctions(*hot_addresses);
@@ -774,7 +782,7 @@ BinaryAddressMapper::ExtractIntraFunctionPaths(
 }
 
 BinaryAddressMapperBuilder::BinaryAddressMapperBuilder(
-    absl::flat_hash_map<uint64_t, FunctionSymbolInfo> symbol_info_map,
+    llvm::DenseMap<uint64_t, FunctionSymbolInfo> symbol_info_map,
     std::vector<llvm::object::BBAddrMap> bb_addr_map, PropellerStats& stats,
     const PropellerOptions* absl_nonnull options)
     : bb_addr_map_(std::move(bb_addr_map)),
@@ -791,7 +799,7 @@ BinaryAddressMapper::BinaryAddressMapper(
     std::set<int> selected_functions,
     std::vector<llvm::object::BBAddrMap> bb_addr_map,
     std::vector<BbHandle> bb_handles,
-    absl::flat_hash_map<int, FunctionSymbolInfo> symbol_info_map)
+    llvm::DenseMap<int, FunctionSymbolInfo> symbol_info_map)
     : selected_functions_(std::move(selected_functions)),
       bb_handles_(std::move(bb_handles)),
       bb_addr_map_(std::move(bb_addr_map)),
@@ -799,7 +807,7 @@ BinaryAddressMapper::BinaryAddressMapper(
 
 absl::StatusOr<std::unique_ptr<BinaryAddressMapper>> BuildBinaryAddressMapper(
     const PropellerOptions& options, const BinaryContent& binary_content,
-    PropellerStats& stats, const absl::flat_hash_set<uint64_t>* hot_addresses) {
+    PropellerStats& stats, const llvm::DenseSet<uint64_t>* hot_addresses) {
   LOG(INFO) << "Started reading the binary content from: "
             << binary_content.file_name;
   BbAddrMapData bb_addr_map;
@@ -812,7 +820,7 @@ absl::StatusOr<std::unique_ptr<BinaryAddressMapper>> BuildBinaryAddressMapper(
 }
 
 std::unique_ptr<BinaryAddressMapper> BinaryAddressMapperBuilder::Build(
-    const absl::flat_hash_set<uint64_t>* hot_addresses) && {
+    const llvm::DenseSet<uint64_t>* hot_addresses) && {
   std::set<int> selected_functions = SelectFunctions(hot_addresses);
   DropNonSelectedFunctions(selected_functions);
   std::vector<BbHandle> bb_handles =

@@ -20,9 +20,9 @@
 #include <utility>
 
 #include "absl/base/attributes.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/TargetParser/Triple.h"
 #include "propeller/binary_address_branch.h"
 #include "propeller/binary_address_mapper.h"
@@ -69,11 +69,11 @@ FrequenciesBranchAggregator::FrequenciesBranchAggregator(
                           .options = std::move(options),
                           .binary_content = std::move(binary_content)}} {}
 
-absl::StatusOr<absl::flat_hash_set<uint64_t>>
+absl::StatusOr<llvm::DenseSet<uint64_t>>
 FrequenciesBranchAggregator::GetBranchEndpointAddresses() {
   ASSIGN_OR_RETURN(BranchFrequencies frequencies,
                    lazy_aggregator_.Evaluate().frequencies);
-  absl::flat_hash_set<uint64_t> endpoint_addresses;
+  llvm::DenseSet<uint64_t> endpoint_addresses;
   for (const auto& [branch, count] : frequencies.taken_branch_counters) {
     endpoint_addresses.insert(branch.from);
     endpoint_addresses.insert(branch.to);

@@ -23,13 +23,13 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
@@ -344,9 +344,9 @@ std::optional<uint64_t> GetKernelStextOffset(
 }  // namespace
 
 namespace propeller {
-absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
+llvm::DenseMap<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
 ReadSymbolTable(const BinaryContent& binary_content) {
-  absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
+  llvm::DenseMap<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
       symtab;
   for (llvm::object::SymbolRef sr : binary_content.object_file->symbols()) {
     llvm::object::ELFSymbolRef symbol(sr);
@@ -423,10 +423,10 @@ absl::StatusOr<BbAddrMapData> ReadBbAddrMap(
                           : std::nullopt};
 }
 
-absl::flat_hash_map<uint64_t, FunctionSymbolInfo> GetSymbolInfoMap(
+llvm::DenseMap<uint64_t, FunctionSymbolInfo> GetSymbolInfoMap(
     const BinaryContent& binary_content) {
   auto symtab = ReadSymbolTable(binary_content);
-  absl::flat_hash_map<uint64_t, FunctionSymbolInfo> symbol_info_map;
+  llvm::DenseMap<uint64_t, FunctionSymbolInfo> symbol_info_map;
   for (const auto& [address, symbols] : symtab) {
     FunctionSymbolInfo symbol_info;
     for (const llvm::object::ELFSymbolRef sr : symbols) {
@@ -434,18 +434,18 @@ absl::flat_hash_map<uint64_t, FunctionSymbolInfo> GetSymbolInfoMap(
       symbol_info.section_name = llvm::cantFail(
           llvm::cantFail(symbols.front().getSection())->getName());
     }
-    symbol_info_map.emplace(address, std::move(symbol_info));
+    symbol_info_map.try_emplace(address, std::move(symbol_info));
   }
   return symbol_info_map;
 }
 
-absl::StatusOr<absl::flat_hash_map<llvm::StringRef, llvm::StringRef>>
+absl::StatusOr<llvm::DenseMap<llvm::StringRef, llvm::StringRef>>
 ELFFileUtilBase::ParseModInfoSectionContent(llvm::StringRef section_content) {
   // .modinfo section is arranged as <key>=<value> pairs, with \0 as separators,
   // the last <key>=<value> pair also ends with \0.
   if (section_content.empty())
     return absl::FailedPreconditionError("empty .modinfo section");
-  absl::flat_hash_map<llvm::StringRef, llvm::StringRef> modinfo;
+  llvm::DenseMap<llvm::StringRef, llvm::StringRef> modinfo;
   const char *q, *eq, *p = section_content.data();
   const char* end = p + section_content.size();
   while (p < end) {
@@ -468,7 +468,7 @@ ELFFileUtilBase::ParseModInfoSectionContent(llvm::StringRef section_content) {
     if (eq != p && eq != q) {
       CHECK(eq > p);
       CHECK(eq < q);
-      modinfo.emplace(llvm::StringRef(p, eq - p), llvm::StringRef(eq + 1));
+      modinfo.try_emplace(llvm::StringRef(p, eq - p), llvm::StringRef(eq + 1));
     } else {
       return absl::FailedPreconditionError(
           "malformed .modinfo entry: entry contains only key or value");

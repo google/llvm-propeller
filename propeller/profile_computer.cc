@@ -26,13 +26,13 @@
 #include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ELFTypes.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -265,7 +265,7 @@ PropellerProfileComputer::Create(
 //   ConvertPerfDataToPathProfile to
 //      initialize `program_path_profile_`.
 absl::Status PropellerProfileComputer::InitializeProgramProfile() {
-  absl::flat_hash_set<uint64_t> unique_addresses;
+  llvm::DenseSet<uint64_t> unique_addresses;
   if (branch_aggregator_ != nullptr) {
     ASSIGN_OR_RETURN(unique_addresses,
                      branch_aggregator_->GetBranchEndpointAddresses());

@@ -22,13 +22,13 @@
 #include <string>
 #include <utility>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "propeller/binary_content.h"
 #include "propeller/branch_frequencies.h"
@@ -84,7 +84,7 @@ using BinaryMMaps = std::map<uint32_t, std::set<MMapEntry>>;
 
 // Returns the set of file names with profiles in `perf_reader` with build IDs
 // matching `build_id`.
-absl::StatusOr<absl::flat_hash_set<std::string>> GetBuildIdNames(
+absl::StatusOr<llvm::StringSet<>> GetBuildIdNames(
     const quipper::PerfReader& perf_reader, llvm::StringRef build_id);
 
 // Selects mmap events from perfdata file by comparing the mmap event's
