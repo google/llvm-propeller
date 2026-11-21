@@ -21,9 +21,9 @@
 #include <optional>
 
 #include "absl/base/attributes.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "llvm/ADT/DenseMap.h"
 #include "propeller/binary_address_branch.h"
 #include "propeller/binary_address_mapper.h"
 #include "propeller/binary_content.h"
@@ -102,8 +102,8 @@ class FrequenciesBranchAggregator : public BranchAggregator {
   // Accumulates the actual outgoing weights for each block whose final
   // instruction is in `not_taken_branches`.
   void AccumulateActualOutgoingWeights(
-      const absl::flat_hash_map<BinaryAddressBranch, int64_t>& taken_branches,
-      const absl::flat_hash_map<BinaryAddressNotTakenBranch, int64_t>&
+      const llvm::DenseMap<BinaryAddressBranch, int64_t>& taken_branches,
+      const llvm::DenseMap<BinaryAddressNotTakenBranch, int64_t>&
           not_taken_branches,
       const BinaryAddressMapper& binary_address_mapper,
       WeightsMap& weights_map) const;
@@ -111,7 +111,7 @@ class FrequenciesBranchAggregator : public BranchAggregator {
   // Accumulates the weights of incoming and outgoing branch edges for each
   // block with an address in `taken_branches`.
   void AccumulateBranchWeights(
-      const absl::flat_hash_map<BinaryAddressBranch, int64_t>& taken_branches,
+      const llvm::DenseMap<BinaryAddressBranch, int64_t>& taken_branches,
       const BinaryAddressMapper& binary_address_mapper,
       WeightsMap& weights_map) const;
 
@@ -143,14 +143,13 @@ class FrequenciesBranchAggregator : public BranchAggregator {
 
   // Resolves a potential fallthrough by determining the appropriate end block
   // and updating the count of the resulting fallthrough if it is valid.
-  void HandleFallthrough(int from_bb_handle_index, int to_bb_handle_index,
-                         uint64_t weight,
-                         const BinaryAddressMapper& binary_address_mapper,
-                         absl::flat_hash_map<BinaryAddressFallthrough, int64_t>&
-                             fallthroughs) const;
+  void HandleFallthrough(
+      int from_bb_handle_index, int to_bb_handle_index, uint64_t weight,
+      const BinaryAddressMapper& binary_address_mapper,
+      llvm::DenseMap<BinaryAddressFallthrough, int64_t>& fallthroughs) const;
 
   // Infers the fallthrough edges and weights from the branch frequencies.
-  absl::flat_hash_map<BinaryAddressFallthrough, int64_t> InferFallthroughs(
+  llvm::DenseMap<BinaryAddressFallthrough, int64_t> InferFallthroughs(
       const BranchFrequencies& branch_frequencies,
       const BinaryAddressMapper& binary_address_mapper) const;
 

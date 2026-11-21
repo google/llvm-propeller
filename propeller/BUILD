@@ -57,8 +57,8 @@ cc_library(
     deps = [
         ":binary_address_branch",
         "@abseil-cpp//absl/algorithm:container",
-        "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/container:flat_hash_set",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -83,7 +83,7 @@ cc_library(
         ":binary_address_branch",
         ":branch_frequencies_cc_proto",
         "@abseil-cpp//absl/algorithm:container",
-        "@abseil-cpp//absl/container:flat_hash_map",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -140,9 +140,9 @@ cc_library(
         ":propeller_statistics",
         ":status_macros",
         "@abseil-cpp//absl/base:core_headers",
-        "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/status:statusor",
+        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TargetParser",
     ],
 )
@@ -153,7 +153,7 @@ cc_library(
     deps = [
         ":binary_address_branch",
         "@abseil-cpp//absl/algorithm:container",
-        "@abseil-cpp//absl/container:flat_hash_map",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -725,7 +725,6 @@ cc_library(
         ":resolve_mmap_name",
         ":status_macros",
         "@abseil-cpp//absl/base:nullability",
-        "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/log",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
