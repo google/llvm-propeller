@@ -16,11 +16,11 @@
 #define PROPELLER_CODE_LAYOUT_H_
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <utility>
 #include <vector>
 
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/types/span.h"
@@ -38,13 +38,13 @@ namespace propeller {
 
 // Contains layout information for all functions in a section.
 struct SectionLayoutInfo {
-  absl::btree_map<int, FunctionLayoutInfo> layouts_by_function_index;
+  std::map<int, FunctionLayoutInfo> layouts_by_function_index;
 };
 
 // Runs `CodeLayout` on every section in `program_cfg` and returns
 // the code layout results as a map keyed by section names, and valued by the
 // `SectionLayoutInfo` of all functions in each section.
-absl::btree_map<llvm::StringRef, SectionLayoutInfo> GenerateLayoutBySection(
+std::map<llvm::StringRef, SectionLayoutInfo> GenerateLayoutBySection(
     const ProgramCfg& program_cfg,
     const PropellerCodeLayoutParameters& code_layout_params,
     PropellerStats::CodeLayoutStats& code_layout_stats);

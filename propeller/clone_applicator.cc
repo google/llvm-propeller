@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <tuple>
@@ -23,7 +24,6 @@
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -58,7 +58,7 @@ void SortNodesByFrequency(std::vector<CFGNode*>& nodes) {
 // in `cfg_changes_by_function_index`.
 void CreateInterFunctionEdges(
     const ProgramCfg& program_cfg,
-    const absl::btree_map<int, std::vector<CfgChangeFromPathCloning>>&
+    const std::map<int, std::vector<CfgChangeFromPathCloning>>&
         cfg_changes_by_function_index,
     absl::flat_hash_map<int, std::unique_ptr<ControlFlowGraph>>&
         clone_cfgs_by_index) {
@@ -244,13 +244,13 @@ CloneApplicatorStats ApplyClonings(
   LOG(INFO) << "Applying clonings...";
   absl::flat_hash_map<int, std::unique_ptr<ControlFlowGraph>>
       clone_cfgs_by_function_index;
-  absl::btree_map<int, std::vector<CfgChangeFromPathCloning>>
+  std::map<int, std::vector<CfgChangeFromPathCloning>>
       cfg_changes_by_function_index;
 
   // Move clonings to a btree_map to apply them in a consistent order. Also,
   // sort the clonings within each function in descending order of their
   // scores.
-  absl::btree_map<int, std::vector<EvaluatedPathCloning>>
+  std::map<int, std::vector<EvaluatedPathCloning>>
       clonings_by_function_index_sorted;
   for (auto& [function_index, clonings] : clonings_by_function_index) {
     absl::c_sort(clonings, std::greater<EvaluatedPathCloning>());

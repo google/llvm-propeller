@@ -16,12 +16,12 @@
 #define PROPELLER_BINARY_CONTENT_H_
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -158,7 +158,7 @@ ReadSymbolTable(const BinaryContent& binary_content);
 // Returns the binary's thunk symbols by reading from its symbol table.
 // These are returned as a map from the thunk's address to the thunk symbol.
 // Returns an empty map if the architecture does not support thunks.
-absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> ReadThunkSymbols(
+std::map<uint64_t, llvm::object::ELFSymbolRef> ReadThunkSymbols(
     const BinaryContent& binary_content);
 
 // Returns a map from function addresses to their symbol info.

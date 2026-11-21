@@ -14,15 +14,15 @@
 
 #include "propeller/node_chain_builder.h"
 
+#include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/btree_map.h"
-#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -101,8 +101,8 @@ NodeChainBuilder::CreateNodeChainBuilder<NodeChainAssemblyBalancedTreeQueue>(
 using NodeChainAssemblyComparator =
     NodeChainAssembly::NodeChainAssemblyComparator;
 
-absl::btree_map<const CFGNode*, const CFGNode*, CFGNodePtrComparator>
-GetForcedEdges(const ControlFlowGraph& cfg) {
+std::map<const CFGNode*, const CFGNode*, CFGNodePtrComparator> GetForcedEdges(
+    const ControlFlowGraph& cfg) {
   // Each node can participate in a forced edge at most one time as the source
   // at most one time as the sink.
   // So we compute these edges as a map from source to sink nodes below.
@@ -112,8 +112,7 @@ GetForcedEdges(const ControlFlowGraph& cfg) {
   // have a forced edge. We also keep track of the in-degree of each node.
   // After visiting all edges, we remove all source-sink pairs where
   // sink == nullptr or if sink has an in-degree larger than one.
-  absl::btree_map<const CFGNode*, const CFGNode*, CFGNodePtrComparator>
-      forced_edges;
+  std::map<const CFGNode*, const CFGNode*, CFGNodePtrComparator> forced_edges;
   // This stores the number of hot (non-zero weight) incoming edges to every
   // node (hot in-degree).
   absl::flat_hash_map<const CFGNode*, int> hot_in_degree;
@@ -137,8 +136,8 @@ GetForcedEdges(const ControlFlowGraph& cfg) {
   return forced_edges;
 }
 
-void BreakCycles(absl::btree_map<const CFGNode*, const CFGNode*,
-                                 CFGNodePtrComparator>& path_next) {
+void BreakCycles(
+    std::map<const CFGNode*, const CFGNode*, CFGNodePtrComparator>& path_next) {
   // This maps each node to the path (id) they belong to. Path ids are 1-based.
   absl::flat_hash_map<const CFGNode*, int> node_to_path_id;
   // These are the source nodes for all edges that must be cut to break cycles.
@@ -181,14 +180,14 @@ std::vector<std::vector<const CFGNode*>> GetForcedPaths(
     const ControlFlowGraph& cfg) {
   // First find all forced fallthrough edges. Each of these edges are the only
   // edge to their sink and the only edge from their source.
-  absl::btree_map<const CFGNode*, const CFGNode*, CFGNodePtrComparator>
-      path_next = GetForcedEdges(cfg);
+  std::map<const CFGNode*, const CFGNode*, CFGNodePtrComparator> path_next =
+      GetForcedEdges(cfg);
 
   // Construct paths from `path_next` after breaking its cycles.
   BreakCycles(path_next);
 
   // Find the beginning nodes of paths.
-  absl::btree_set<const CFGNode*, CFGNodePtrComparator> path_begin_nodes;
+  std::set<const CFGNode*, CFGNodePtrComparator> path_begin_nodes;
   for (const auto [source, unused] : path_next) path_begin_nodes.insert(source);
   for (const auto [unused, sink] : path_next) path_begin_nodes.erase(sink);
 

@@ -129,7 +129,6 @@ cc_library(
     srcs = ["frequencies_branch_aggregator.cc"],
     hdrs = ["frequencies_branch_aggregator.h"],
     deps = [
-        ":bb_handle",
         ":binary_address_branch",
         ":binary_address_mapper",
         ":binary_content",
@@ -141,7 +140,6 @@ cc_library(
         ":propeller_statistics",
         ":status_macros",
         "@abseil-cpp//absl/base:core_headers",
-        "@abseil-cpp//absl/container:btree",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/status:statusor",
@@ -254,12 +252,10 @@ cc_library(
     deps = [
         ":spe_pid_provider",
         "@abseil-cpp//absl/base",
-        "@abseil-cpp//absl/container:btree",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/log",
         "@abseil-cpp//absl/status",
         "@abseil-cpp//absl/status:statusor",
-        "@abseil-cpp//absl/strings",
         "@com_google_perf_data_converter//src/quipper:arm_spe_decoder",
         "@com_google_perf_data_converter//src/quipper:perf_data_cc_proto",
         "@com_google_perf_data_converter//src/quipper:perf_data_utils",
@@ -274,7 +270,6 @@ cc_library(
     deps = [
         ":addr2cu",
         ":status_macros",
-        "@abseil-cpp//absl/container:btree",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/log",
         "@abseil-cpp//absl/log:check",
@@ -429,7 +424,6 @@ cc_library(
     deps = [
         ":cfg",
         "@abseil-cpp//absl/algorithm:container",
-        "@abseil-cpp//absl/container:btree",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/memory",
@@ -495,7 +489,6 @@ cc_library(
         "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/base:core_headers",
         "@abseil-cpp//absl/base:nullability",
-        "@abseil-cpp//absl/container:btree",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/log",
@@ -564,7 +557,6 @@ cc_library(
         ":propeller_options_cc_proto",
         ":propeller_statistics",
         "@abseil-cpp//absl/algorithm:container",
-        "@abseil-cpp//absl/container:btree",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/functional:function_ref",
@@ -626,9 +618,6 @@ cc_library(
 cc_library(
     name = "function_prefetch_info",
     hdrs = ["function_prefetch_info.h"],
-    deps = [
-        "@abseil-cpp//absl/container:btree",
-    ],
 )
 
 cc_library(
@@ -639,7 +628,6 @@ cc_library(
         ":function_prefetch_info",
         ":program_cfg",
         ":propeller_statistics",
-        "@abseil-cpp//absl/container:btree",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -789,7 +777,6 @@ cc_library(
         "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/base:core_headers",
         "@abseil-cpp//absl/base:nullability",
-        "@abseil-cpp//absl/container:btree",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/log:check",
@@ -846,7 +833,6 @@ cc_library(
         ":propeller_options_cc_proto",
         ":propeller_statistics",
         "@abseil-cpp//absl/algorithm:container",
-        "@abseil-cpp//absl/container:btree",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/log",
@@ -942,7 +928,6 @@ cc_library(
         "@abseil-cpp//absl/algorithm:container",
         "@abseil-cpp//absl/base:core_headers",
         "@abseil-cpp//absl/base:nullability",
-        "@abseil-cpp//absl/container:btree",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/log",
@@ -1504,7 +1489,6 @@ cc_test(
         ":propeller_statistics",
         ":status_testing_macros",
         "@abseil-cpp//absl/algorithm:container",
-        "@abseil-cpp//absl/container:btree",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/status:status_matchers",
@@ -1702,7 +1686,6 @@ cc_test(
         ":propeller_statistics",
         ":status_testing_macros",
         "@abseil-cpp//absl/algorithm:container",
-        "@abseil-cpp//absl/container:btree",
         "@abseil-cpp//absl/container:flat_hash_set",
         "@abseil-cpp//absl/log:check",
         "@abseil-cpp//absl/status",

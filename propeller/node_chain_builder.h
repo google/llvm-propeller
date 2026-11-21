@@ -16,13 +16,13 @@
 #define PROPELLER_NODE_CHAIN_BUILDER_H_
 
 #include <iterator>
+#include <map>
 #include <memory>
 #include <set>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "propeller/cfg.h"
@@ -101,7 +101,7 @@ class NodeChainAssemblyBalancedTreeQueue : public NodeChainAssemblyQueue {
   // Assemblies are stored in std::set which provides logarithmic-time
   // complexity insertions and deletion operations. It uses the score-based
   // comparator to allow retrieval of the max element in constant time.
-  // Note that we can't use the recommended absl::btree_set because insertions
+  // Note that we can't use the recommended std::set because insertions
   // and deletions can invalidate all iterators.
   std::set<NodeChainAssembly, NodeChainAssembly::NodeChainAssemblyComparator>
       assemblies_;
@@ -320,12 +320,12 @@ std::vector<std::vector<const CFGNode*>> GetForcedPaths(
 // These are the edges which -- based on the profile -- are the only outgoing
 // edges from their source and the only incoming edges to their sinks.
 // Note that the paths represented by these edges may include cycles.
-absl::btree_map<const CFGNode*, const CFGNode*, CFGNodePtrComparator>
-GetForcedEdges(const ControlFlowGraph& cfg);
+std::map<const CFGNode*, const CFGNode*, CFGNodePtrComparator> GetForcedEdges(
+    const ControlFlowGraph& cfg);
 
 // Breaks cycles in the `path_next` map by cutting the edge sinking to the
 // smallest address in every cycle (hopefully a loop backedge).
-void BreakCycles(absl::btree_map<const CFGNode*, const CFGNode*,
-                                 CFGNodePtrComparator>& path_next);
+void BreakCycles(
+    std::map<const CFGNode*, const CFGNode*, CFGNodePtrComparator>& path_next);
 }  // namespace propeller
 #endif  // PROPELLER_NODE_CHAIN_BUILDER_H_

@@ -16,11 +16,11 @@
 #define PROPELLER_FREQUENCIES_BRANCH_AGGREGATOR_H_
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 
 #include "absl/base/attributes.h"
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -91,7 +91,7 @@ class FrequenciesBranchAggregator : public BranchAggregator {
   };
 
   // A map from basic block handle index to the block's sampled weights.
-  using WeightsMap = absl::btree_map<int, SampledWeights>;
+  using WeightsMap = std::map<int, SampledWeights>;
 
   // Computes the sampled weights for each block with an address in
   // `branch_frequencies`.

@@ -16,13 +16,13 @@
 
 #include <cstdint>
 #include <iterator>
+#include <map>
 #include <memory>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/types/span.h"
@@ -39,12 +39,11 @@
 
 namespace propeller {
 
-absl::btree_map<llvm::StringRef, SectionLayoutInfo> GenerateLayoutBySection(
+std::map<llvm::StringRef, SectionLayoutInfo> GenerateLayoutBySection(
     const ProgramCfg& program_cfg,
     const PropellerCodeLayoutParameters& code_layout_params,
     PropellerStats::CodeLayoutStats& code_layout_stats) {
-  absl::btree_map<llvm::StringRef, SectionLayoutInfo>
-      layout_info_by_section_name;
+  std::map<llvm::StringRef, SectionLayoutInfo> layout_info_by_section_name;
   absl::flat_hash_map<llvm::StringRef, std::vector<const ControlFlowGraph*>>
       cfgs_by_section_name = program_cfg.GetCfgsBySectionName();
   for (const auto& [section_name, cfgs] : cfgs_by_section_name) {
@@ -145,7 +144,7 @@ SectionLayoutInfo CodeLayout::GenerateLayout() {
       ComputeOptLayoutScores(clusters);
 
   SectionLayoutInfo section_layout_info;
-  absl::btree_map<int, FunctionLayoutInfo>& function_layout_info_map =
+  std::map<int, FunctionLayoutInfo>& function_layout_info_map =
       section_layout_info.layouts_by_function_index;
 
   int function_index = -1;

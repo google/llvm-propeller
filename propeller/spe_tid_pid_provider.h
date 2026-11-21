@@ -18,8 +18,8 @@
 #include <sys/types.h>
 
 #include <cstdint>
+#include <map>
 
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "google/protobuf/repeated_ptr_field.h"
@@ -53,7 +53,7 @@ class SpeTidPidProvider : public SpePidProvider {
   uint64_t SpeTimestampToPerfTimestamp(uint64_t cycles) const;
 
   // TID -> (timestamp -> pid)
-  absl::flat_hash_map<int, absl::btree_map<uint64_t, pid_t>> tids_to_pids_;
+  absl::flat_hash_map<int, std::map<uint64_t, pid_t>> tids_to_pids_;
   quipper::PerfDataProto::TimeConvEvent time_conv_event_;
 };
 }  // namespace propeller

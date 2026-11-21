@@ -18,10 +18,10 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
-#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -140,7 +140,7 @@ struct FlatBbHandleBranchPath {
 class BinaryAddressMapper {
  public:
   BinaryAddressMapper(
-      absl::btree_set<int> selected_functions,
+      std::set<int> selected_functions,
       std::vector<llvm::object::BBAddrMap> bb_addr_map,
       std::vector<BbHandle> bb_handles,
       absl::flat_hash_map<int, FunctionSymbolInfo> symbol_info_map);
@@ -160,7 +160,7 @@ class BinaryAddressMapper {
 
   const std::vector<BbHandle>& bb_handles() const { return bb_handles_; }
 
-  const absl::btree_set<int>& selected_functions() const {
+  const std::set<int>& selected_functions() const {
     return selected_functions_;
   }
 
@@ -310,7 +310,7 @@ class BinaryAddressMapper {
       const BinaryAddressBranchPath& address_path) const;
 
  private:
-  absl::btree_set<int> selected_functions_;
+  std::set<int> selected_functions_;
 
   // BB handles for all basic blocks of the selected functions. BB handles are
   // ordered in increasing order of their addresses. Thus every function's

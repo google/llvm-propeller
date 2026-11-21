@@ -16,13 +16,13 @@
 
 #include <cstdint>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -261,9 +261,9 @@ absl::Status ELFFileUtil<ELFT>::InitializeKernelModule(
 
 // Returns an AArch64 binary's thunk symbols by reading from its symbol table.
 // These are returned as a map from the thunk's address to the thunk symbol.
-absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> ReadAArch64ThunkSymbols(
+std::map<uint64_t, llvm::object::ELFSymbolRef> ReadAArch64ThunkSymbols(
     const BinaryContent& binary_content) {
-  absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> thunks;
+  std::map<uint64_t, llvm::object::ELFSymbolRef> thunks;
   for (const auto& [address, symbols] : ReadSymbolTable(binary_content)) {
     for (const llvm::object::ELFSymbolRef& symbol : symbols) {
       llvm::StringRef name = llvm::cantFail(symbol.getName());
@@ -381,7 +381,7 @@ ReadSymbolTable(const BinaryContent& binary_content) {
   return symtab;
 }
 
-absl::btree_map<uint64_t, llvm::object::ELFSymbolRef> ReadThunkSymbols(
+std::map<uint64_t, llvm::object::ELFSymbolRef> ReadThunkSymbols(
     const BinaryContent& binary_content) {
   if (binary_content.object_file->getArch() != llvm::Triple::aarch64) return {};
 

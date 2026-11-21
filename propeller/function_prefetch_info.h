@@ -16,9 +16,8 @@
 #define PROPELLER_FUNCTION_PREFETCH_INFO_H_
 
 #include <cstdint>
+#include <set>
 #include <vector>
-
-#include "absl/container/btree_set.h"
 
 namespace propeller {
 
@@ -56,7 +55,7 @@ struct FunctionPrefetchInfo {
   std::vector<PrefetchHint> prefetch_hints;
 
   // Prefetch targets in this function.
-  absl::btree_set<TargetBBInfo> prefetch_targets;
+  std::set<TargetBBInfo> prefetch_targets;
 };
 
 }  // namespace propeller

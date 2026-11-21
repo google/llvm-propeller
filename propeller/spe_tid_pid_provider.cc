@@ -18,11 +18,10 @@
 
 #include <cstdint>
 #include <iterator>
+#include <map>
 #include <utility>
 
 #include "absl/base/casts.h"
-#include "absl/container/btree_map.h"
-#include "absl/container/btree_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "google/protobuf/repeated_ptr_field.h"
@@ -41,7 +40,7 @@ SpeTidPidProvider::SpeTidPidProvider(
 
     auto record = [&](int pid, int tid, uint64_t timestamp) {
       if (pid <= 0 || tid <= 0) return;
-      absl::btree_map<uint64_t, pid_t>& pids = tids_to_pids_[tid];
+      std::map<uint64_t, pid_t>& pids = tids_to_pids_[tid];
       // If the most recent entry is from this PID, don't bother adding it.
       if (!pids.empty() && pids.rbegin()->second == pid) return;
       VLOG(7) << "tid = " << tid << ", timestamp = " << timestamp
@@ -95,7 +94,7 @@ absl::StatusOr<int> SpeTidPidProvider::GetPid(
 
   auto found = tids_to_pids_.find(record.context.id);
   if (found == tids_to_pids_.end()) return default_pid;
-  const absl::btree_map<uint64_t, pid_t>& pids = found->second;
+  const std::map<uint64_t, pid_t>& pids = found->second;
 
   auto it = pids.upper_bound(SpeTimestampToPerfTimestamp(record.timestamp));
 

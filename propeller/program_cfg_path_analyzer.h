@@ -18,13 +18,13 @@
 #include <cstdint>
 #include <deque>
 #include <optional>
+#include <set>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
-#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/time.h"
@@ -378,7 +378,7 @@ class ProgramCfgPathAnalyzer {
   const propeller::ProgramCfg* program_cfg_;
   // Hot join basic blocks, stored as a map from function indexes to the set of
   // basic block indices.
-  absl::flat_hash_map<int, absl::btree_set<int>> hot_join_bbs_;
+  absl::flat_hash_map<int, std::set<int>> hot_join_bbs_;
   // Paths remaining to be analyzed.
   std::deque<propeller::FlatBbHandleBranchPath> bb_branch_paths_;
   // Program path profile for all functions.

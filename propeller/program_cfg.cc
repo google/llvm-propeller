@@ -15,11 +15,11 @@
 #include "propeller/program_cfg.h"
 
 #include <cstdint>
+#include <set>
 #include <tuple>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "llvm/ADT/StringRef.h"
@@ -85,18 +85,17 @@ int64_t ProgramCfg::GetNodeFrequencyThreshold(
   return hot_nodes[cutoff_index].frequency;
 }
 
-absl::flat_hash_map<int, absl::btree_set<int>> ProgramCfg::GetHotJoinNodes(
+absl::flat_hash_map<int, std::set<int>> ProgramCfg::GetHotJoinNodes(
     int64_t hot_node_frequency_threshold,
     int64_t hot_edge_frequency_threshold) const {
-  absl::flat_hash_map<int, absl::btree_set<int>> hot_join_nodes;
+  absl::flat_hash_map<int, std::set<int>> hot_join_nodes;
 
   for (const auto& [function_index, cfg] : cfgs_) {
     std::vector<int> hot_join_bbs = cfg->GetHotJoinNodes(
         hot_node_frequency_threshold, hot_edge_frequency_threshold);
     if (hot_join_bbs.empty()) continue;
-    hot_join_nodes.emplace(
-        function_index,
-        absl::btree_set<int>(hot_join_bbs.begin(), hot_join_bbs.end()));
+    hot_join_nodes.emplace(function_index, std::set<int>(hot_join_bbs.begin(),
+                                                         hot_join_bbs.end()));
   }
   return hot_join_nodes;
 }

@@ -17,11 +17,11 @@
 
 #include <cstdint>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
@@ -87,7 +87,7 @@ class ProgramCfg {
   // two incoming intra-function edges at least as heavy as
   // `hot_edge_frequency_threshold`. Basic block indexes are returned in a map
   // keyed by their function index.
-  absl::flat_hash_map<int, absl::btree_set<int>> GetHotJoinNodes(
+  absl::flat_hash_map<int, std::set<int>> GetHotJoinNodes(
       int64_t hot_node_frequency_threshold,
       int64_t hot_edge_frequency_threshold) const;
 

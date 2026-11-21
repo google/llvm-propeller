@@ -15,6 +15,7 @@
 #include "propeller/code_layout.h"
 
 #include <iterator>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -22,7 +23,6 @@
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status_matchers.h"
@@ -535,8 +535,8 @@ TEST(CodeLayoutTest, GetForcedPathsWithLoop) {
               ElementsAre(ElementsAre(Pointee(NodeIndexIs(1)),
                                       Pointee(NodeIndexIs(2)))));
 
-  absl::btree_map<const CFGNode*, const CFGNode*, CFGNodePtrComparator>
-      forced_edges = GetForcedEdges(foo_cfg);
+  std::map<const CFGNode*, const CFGNode*, CFGNodePtrComparator> forced_edges =
+      GetForcedEdges(foo_cfg);
   EXPECT_THAT(forced_edges,
               UnorderedElementsAre(
                   Pair(Pointee(NodeIndexIs(1)), Pointee(NodeIndexIs(2))),
@@ -564,8 +564,8 @@ TEST(CodeLayoutTest, GetForcedPathsNoLoop) {
               ElementsAre(ElementsAre(NodeIndexIs(0), NodeIndexIs(1)),
                           ElementsAre(NodeIndexIs(2), NodeIndexIs(3))));
 
-  absl::btree_map<const CFGNode*, const CFGNode*, CFGNodePtrComparator>
-      forced_edges = GetForcedEdges(foo_cfg);
+  std::map<const CFGNode*, const CFGNode*, CFGNodePtrComparator> forced_edges =
+      GetForcedEdges(foo_cfg);
   EXPECT_THAT(forced_edges,
               UnorderedElementsAre(
                   Pair(Pointee(NodeIndexIs(0)), Pointee(NodeIndexIs(1))),

@@ -15,10 +15,10 @@
 #ifndef PROPELLER_PROFILE_H_
 #define PROPELLER_PROFILE_H_
 
+#include <map>
 #include <memory>
 #include <string>
 
-#include "absl/container/btree_map.h"
 #include "llvm/ADT/StringRef.h"
 #include "propeller/function_layout_info.h"
 #include "propeller/function_prefetch_info.h"
@@ -35,15 +35,14 @@ struct FunctionProfileInfo {
 
 // Contains profile information for functions in a section.
 struct SectionProfileInfo {
-  absl::btree_map<int, FunctionProfileInfo> profile_infos_by_function_index;
+  std::map<int, FunctionProfileInfo> profile_infos_by_function_index;
 };
 
 // Represents a Propeller profile, including CFGs, layout information and
 // statistics.
 struct PropellerProfile {
   std::unique_ptr<ProgramCfg> program_cfg;
-  absl::btree_map<llvm::StringRef, SectionProfileInfo>
-      profile_infos_by_section_name;
+  std::map<llvm::StringRef, SectionProfileInfo> profile_infos_by_section_name;
   PropellerStats stats;
   // Build ID of the binary for which the profile was collected.
   std::string build_id;

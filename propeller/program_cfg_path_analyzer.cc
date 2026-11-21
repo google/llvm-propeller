@@ -20,11 +20,11 @@
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <set>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -97,7 +97,7 @@ class CloningPathTraceHandler : public PathTraceHandler {
   // that outlive the one constructed.
   CloningPathTraceHandler(const PathProfileOptions* path_profile_options,
                           const ControlFlowGraph* cfg,
-                          const absl::btree_set<int>* function_hot_join_bbs,
+                          const std::set<int>* function_hot_join_bbs,
                           FunctionPathInfo* function_path_info,
                           FunctionPathProfile* function_path_profile)
       : path_profile_options_(path_profile_options),
@@ -290,7 +290,7 @@ class CloningPathTraceHandler : public PathTraceHandler {
   // different hot join blocks).
   std::vector<PathProbe> current_path_probes_;
   // Hot join block (indices) of `cfg_`.
-  const absl::btree_set<int>* function_hot_join_bbs_;
+  const std::set<int>* function_hot_join_bbs_;
   FunctionPathInfo* function_path_info_;
   // Path tree corresponding to ‍`cfg_`, stored as a map from block indices to
   // their path tree root.

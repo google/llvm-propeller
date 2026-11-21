@@ -15,6 +15,7 @@
 #include "propeller/profile_computer.h"
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,7 +25,6 @@
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -172,16 +172,15 @@ absl::StatusOr<PropellerProfile> PropellerProfileComputer::ComputeProfile() && {
         *program_path_profile_, std::move(program_cfg_), stats_.cloning_stats);
   }
 
-  absl::btree_map<llvm::StringRef, SectionLayoutInfo>
-      layout_info_by_section_name =
-          GenerateLayoutBySection(*program_cfg_, options_.code_layout_params(),
-                                  stats_.code_layout_stats);
+  std::map<llvm::StringRef, SectionLayoutInfo> layout_info_by_section_name =
+      GenerateLayoutBySection(*program_cfg_, options_.code_layout_params(),
+                              stats_.code_layout_stats);
 
   absl::flat_hash_map<int, FunctionPrefetchInfo> function_prefetch_infos =
       GeneratePrefetchByFunctionIndex(*program_cfg_, *binary_address_mapper_,
                                       code_prefetch_directives_);
 
-  absl::btree_map<llvm::StringRef, SectionProfileInfo> section_profile_infos;
+  std::map<llvm::StringRef, SectionProfileInfo> section_profile_infos;
 
   for (auto& [section_name, section_layout_info] :
        layout_info_by_section_name) {

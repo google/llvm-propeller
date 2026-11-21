@@ -19,6 +19,7 @@
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <set>
 #include <stack>
 #include <tuple>
 #include <utility>
@@ -27,7 +28,6 @@
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
-#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -80,7 +80,7 @@ struct FunctionIdentity {
 // range handles.
 std::vector<BbRangeHandle> GetBbRangeHandles(
     absl::Span<const BBAddrMap> bb_addr_map,
-    const absl::btree_set<int>* absl_nullable selected_functions = nullptr) {
+    const std::set<int>* absl_nullable selected_functions = nullptr) {
   std::vector<BbRangeHandle> bb_range_handles;
   auto add_bb_range_handles = [&](int function_index) {
     for (int j = 0; j != bb_addr_map[function_index].getBBRanges().size();
@@ -108,9 +108,8 @@ std::vector<BbRangeHandle> GetBbRangeHandles(
 
 // Returns the BB handles for BBs in `selected_functions` in `bb_addr_map`,
 // sorted by their address.
-std::vector<BbHandle> GetBbHandles(
-    absl::Span<const BBAddrMap> bb_addr_map,
-    const absl::btree_set<int>& selected_functions) {
+std::vector<BbHandle> GetBbHandles(absl::Span<const BBAddrMap> bb_addr_map,
+                                   const std::set<int>& selected_functions) {
   std::vector<BbHandle> bb_handles;
   std::vector<BbRangeHandle> selected_bb_range_handles =
       GetBbRangeHandles(bb_addr_map, &selected_functions);
@@ -183,7 +182,7 @@ class BinaryAddressMapperBuilder {
   // Returns a list of hot functions based on addresses `hot_addresses`.
   // The returned `btree_set` specifies the hot functions by their index in
   // `bb_addr_map()`.
-  absl::btree_set<int> CalculateHotFunctions(
+  std::set<int> CalculateHotFunctions(
       const absl::flat_hash_set<uint64_t>& hot_addresses);
 
   // Removes unwanted functions from the BB address map and symbol table, and
@@ -191,28 +190,27 @@ class BinaryAddressMapperBuilder {
   // This function removes all non-text functions, functions without associated
   // names, and those with duplicate names. Selects all functions when
   // `hot_addresses == nullptr`.
-  absl::btree_set<int> SelectFunctions(
+  std::set<int> SelectFunctions(
       const absl::flat_hash_set<uint64_t>* hot_addresses);
 
   // Removes all functions that are not included (selected) in the
   // `selected_functions` set. Clears their associated BB entries from
   // `bb_addr_map_` and also removes their associated entries from `symtab_`.
-  void DropNonSelectedFunctions(const absl::btree_set<int>& selected_functions);
+  void DropNonSelectedFunctions(const std::set<int>& selected_functions);
 
   // Removes all functions without associated symbol names from the given
   // function indices.
-  void FilterNoNameFunctions(absl::btree_set<int>& selected_functions) const;
+  void FilterNoNameFunctions(std::set<int>& selected_functions) const;
 
   // Removes all functions in non-text sections from the specified set of
   // function indices.
-  void FilterNonTextFunctions(absl::btree_set<int>& selected_functions) const;
+  void FilterNonTextFunctions(std::set<int>& selected_functions) const;
 
   // Removes all functions with duplicate names from the specified function
   // indices. When `write_function_guid` is set, functions with the same name
   // but different GUIDs are not considered duplicates. Returns the number of
   // duplicate symbols found. Must be called after `FilterNoNameFunctions`.
-  int FilterDuplicateNameFunctions(
-      absl::btree_set<int>& selected_functions) const;
+  int FilterDuplicateNameFunctions(std::set<int>& selected_functions) const;
 
   // BB address map of functions.
   std::vector<llvm::object::BBAddrMap> bb_addr_map_;
@@ -652,9 +650,9 @@ bool BinaryAddressMapper::CanFallThrough(int from, int to) const {
 
 // For each lbr record addr1->addr2, find function1/2 that contain addr1/addr2
 // and add function1/2's index into the returned set.
-absl::btree_set<int> BinaryAddressMapperBuilder::CalculateHotFunctions(
+std::set<int> BinaryAddressMapperBuilder::CalculateHotFunctions(
     const absl::flat_hash_set<uint64_t>& hot_addresses) {
-  absl::btree_set<int> hot_functions;
+  std::set<int> hot_functions;
   auto add_to_hot_functions = [this, &hot_functions](uint64_t binary_address) {
     auto it = absl::c_upper_bound(
         bb_range_handles_, binary_address,
@@ -681,7 +679,7 @@ absl::btree_set<int> BinaryAddressMapperBuilder::CalculateHotFunctions(
 }
 
 void BinaryAddressMapperBuilder::DropNonSelectedFunctions(
-    const absl::btree_set<int>& selected_functions) {
+    const std::set<int>& selected_functions) {
   for (int i = 0; i != bb_addr_map_.size(); ++i) {
     if (selected_functions.contains(i)) continue;
     symbol_info_map_.erase(i);
@@ -689,7 +687,7 @@ void BinaryAddressMapperBuilder::DropNonSelectedFunctions(
 }
 
 void BinaryAddressMapperBuilder::FilterNoNameFunctions(
-    absl::btree_set<int>& selected_functions) const {
+    std::set<int>& selected_functions) const {
   for (auto it = selected_functions.begin(); it != selected_functions.end();) {
     if (!symbol_info_map_.contains(*it)) {
       LOG(WARNING) << "Hot function at address: 0x"
@@ -703,7 +701,7 @@ void BinaryAddressMapperBuilder::FilterNoNameFunctions(
 }
 
 void BinaryAddressMapperBuilder::FilterNonTextFunctions(
-    absl::btree_set<int>& selected_functions) const {
+    std::set<int>& selected_functions) const {
   for (auto func_it = selected_functions.begin();
        func_it != selected_functions.end();) {
     int function_index = *func_it;
@@ -729,7 +727,7 @@ void BinaryAddressMapperBuilder::FilterNonTextFunctions(
 // the GUID acts like the ".__uniq." suffix: functions with the same name but
 // different GUIDs (including no GUID) are distinguishable and thus are kept.
 int BinaryAddressMapperBuilder::FilterDuplicateNameFunctions(
-    absl::btree_set<int>& selected_functions) const {
+    std::set<int>& selected_functions) const {
   int duplicate_symbols = 0;
   // Maps every function identity to the indices of the functions with that
   // identity.
@@ -752,9 +750,9 @@ int BinaryAddressMapperBuilder::FilterDuplicateNameFunctions(
   return duplicate_symbols;
 }
 
-absl::btree_set<int> BinaryAddressMapperBuilder::SelectFunctions(
+std::set<int> BinaryAddressMapperBuilder::SelectFunctions(
     const absl::flat_hash_set<uint64_t>* hot_addresses) {
-  absl::btree_set<int> selected_functions;
+  std::set<int> selected_functions;
   if (hot_addresses != nullptr) {
     selected_functions = CalculateHotFunctions(*hot_addresses);
   } else {
@@ -790,7 +788,7 @@ BinaryAddressMapperBuilder::BinaryAddressMapperBuilder(
 }
 
 BinaryAddressMapper::BinaryAddressMapper(
-    absl::btree_set<int> selected_functions,
+    std::set<int> selected_functions,
     std::vector<llvm::object::BBAddrMap> bb_addr_map,
     std::vector<BbHandle> bb_handles,
     absl::flat_hash_map<int, FunctionSymbolInfo> symbol_info_map)
@@ -815,7 +813,7 @@ absl::StatusOr<std::unique_ptr<BinaryAddressMapper>> BuildBinaryAddressMapper(
 
 std::unique_ptr<BinaryAddressMapper> BinaryAddressMapperBuilder::Build(
     const absl::flat_hash_set<uint64_t>* hot_addresses) && {
-  absl::btree_set<int> selected_functions = SelectFunctions(hot_addresses);
+  std::set<int> selected_functions = SelectFunctions(hot_addresses);
   DropNonSelectedFunctions(selected_functions);
   std::vector<BbHandle> bb_handles =
       GetBbHandles(bb_addr_map_, selected_functions);
