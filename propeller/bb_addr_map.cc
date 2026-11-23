@@ -16,13 +16,13 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -81,8 +81,7 @@ BbAddrMapPb GetBbAddrMap(const std::string& binary_path) {
     return {};
   }
 
-  absl::flat_hash_map<std::optional<std::string>,
-                      std::unique_ptr<ModuleBbAddrMapPb>>
+  std::map<std::optional<std::string>, std::unique_ptr<ModuleBbAddrMapPb>>
       module_bb_addr_maps_by_name;
 
   for (int bb_addr_map_index = 0;

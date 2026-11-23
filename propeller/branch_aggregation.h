@@ -18,8 +18,8 @@
 #include <cstdint>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "propeller/binary_address_branch.h"
 
 namespace propeller {
@@ -41,7 +41,7 @@ struct BranchAggregation {
   // Returns the set of unique addresses. An aggregation's addresses can come
   // from the `from` and `to` addresses of the keys in `branch_counters` and
   // `fallthrough_counters`.
-  absl::flat_hash_set<uint64_t> GetUniqueAddresses() const;
+  llvm::DenseSet<uint64_t> GetUniqueAddresses() const;
 
   // A count of the number of times each branch was taken.
   llvm::DenseMap<BinaryAddressBranch, int64_t> branch_counters;

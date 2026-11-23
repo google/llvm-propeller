@@ -20,9 +20,9 @@
 #include <cstdint>
 #include <map>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "google/protobuf/repeated_ptr_field.h"
+#include "llvm/ADT/DenseMap.h"
 #include "propeller/spe_pid_provider.h"
 #include "src/quipper/arm_spe_decoder.h"
 #include "src/quipper/perf_data.pb.h"
@@ -53,7 +53,7 @@ class SpeTidPidProvider : public SpePidProvider {
   uint64_t SpeTimestampToPerfTimestamp(uint64_t cycles) const;
 
   // TID -> (timestamp -> pid)
-  absl::flat_hash_map<int, std::map<uint64_t, pid_t>> tids_to_pids_;
+  llvm::DenseMap<int, std::map<uint64_t, pid_t>> tids_to_pids_;
   quipper::PerfDataProto::TimeConvEvent time_conv_event_;
 };
 }  // namespace propeller

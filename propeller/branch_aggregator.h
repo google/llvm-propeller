@@ -17,8 +17,8 @@
 
 #include <cstdint>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "llvm/ADT/DenseSet.h"
 #include "propeller/binary_address_mapper.h"
 #include "propeller/branch_aggregation.h"
 #include "propeller/propeller_options.pb.h"
@@ -34,7 +34,7 @@ class BranchAggregator {
 
   // Gets the set of branch endpoint addresses (i.e. the set of addresses which
   // are either the source or target of a branch or fallthrough).
-  virtual absl::StatusOr<absl::flat_hash_set<uint64_t>>
+  virtual absl::StatusOr<llvm::DenseSet<uint64_t>>
   GetBranchEndpointAddresses() = 0;
 
   // Returns a `BranchAggregation` for the binary mapped by

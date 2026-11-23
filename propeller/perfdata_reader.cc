@@ -22,7 +22,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -30,8 +29,10 @@
 #include "absl/strings/match.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/STLForwardCompat.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Path.h"
@@ -68,8 +69,8 @@ namespace propeller {
 // then we compare "n" w/ mmap_event.filename. Otherwise we compare n's name
 // part w/ mmap_event.filename's name part.
 struct MMapSelector {
-  explicit MMapSelector(const absl::flat_hash_set<std::string>& name_set) {
-    std::string n = *(name_set.begin());
+  explicit MMapSelector(const llvm::StringSet<>& name_set) {
+    llvm::StringRef n = name_set.begin()->getKey();
     // Similar to handling kernel image name -> mmap name.
     // https://github.com/google/autofdo/blob/3dafe34db0eb53af146cf782124f788ceaf6a9aa/sample_reader.cc#L91-L93
     if (name_set.size() == 1 && n == "[kernel.kallsyms]") {
@@ -80,8 +81,8 @@ struct MMapSelector {
       target_mmap_name_set = name_set;
       path_changer = noop_path_changer;
     } else {
-      for (const std::string& nm : name_set) {
-        target_mmap_name_set.insert(llvm::sys::path::filename(nm).str());
+      for (const auto& nm : name_set) {
+        target_mmap_name_set.insert(llvm::sys::path::filename(nm.getKey()));
       }
       path_changer = name_only_path_changer;
     }
@@ -91,12 +92,11 @@ struct MMapSelector {
   // compare both directly. Otherwise, we only compare the name part of
   // mmap_fn.
   bool operator()(const std::string& mmap_fn) const {
-    return target_mmap_name_set.find(path_changer(mmap_fn).str()) !=
-           target_mmap_name_set.end();
+    return target_mmap_name_set.contains(path_changer(mmap_fn));
   }
 
   std::function<llvm::StringRef(const std::string& mmap_fn)> path_changer;
-  absl::flat_hash_set<std::string> target_mmap_name_set;
+  llvm::StringSet<> target_mmap_name_set;
 
   static llvm::StringRef noop_path_changer(const std::string& n) { return n; }
   static llvm::StringRef name_only_path_changer(const std::string& n) {
@@ -104,9 +104,9 @@ struct MMapSelector {
   }
 };
 
-absl::StatusOr<absl::flat_hash_set<std::string>> GetBuildIdNames(
+absl::StatusOr<llvm::StringSet<>> GetBuildIdNames(
     const quipper::PerfReader& perf_reader, llvm::StringRef build_id) {
-  absl::flat_hash_set<std::string> build_id_names;
+  llvm::StringSet<> build_id_names;
   std::vector<std::pair<std::string, std::string>> existing_build_ids;
   for (const auto& build_id_entry : perf_reader.build_ids()) {
     if (!build_id_entry.has_filename() || !build_id_entry.has_build_id_hash())
@@ -147,17 +147,16 @@ absl::StatusOr<absl::flat_hash_set<std::string>> GetBuildIdNames(
 
 // Find the set of file names in perf.data file which has the same build id as
 // found in "binary_file_name".
-std::optional<absl::flat_hash_set<std::string>>
-FindFileNameInPerfDataWithFileBuildId(const quipper::PerfReader& perf_reader,
-                                      const std::string& binary_file_name,
-                                      const BinaryContent& binary_content) {
+std::optional<llvm::StringSet<>> FindFileNameInPerfDataWithFileBuildId(
+    const quipper::PerfReader& perf_reader, const std::string& binary_file_name,
+    const BinaryContent& binary_content) {
   if (binary_content.build_id.empty()) {
     LOG(INFO) << "No Build Id found in '" << binary_file_name << "'.";
     return std::nullopt;
   }
   LOG(INFO) << "Build Id found in '" << binary_file_name
             << "': " << binary_content.build_id;
-  absl::StatusOr<absl::flat_hash_set<std::string>> build_id_names =
+  absl::StatusOr<llvm::StringSet<>> build_id_names =
       GetBuildIdNames(perf_reader, binary_content.build_id);
 
   if (!build_id_names.ok()) {
@@ -165,9 +164,9 @@ FindFileNameInPerfDataWithFileBuildId(const quipper::PerfReader& perf_reader,
     return std::nullopt;
   }
 
-  for (const std::string& fn : *build_id_names)
+  for (const auto& fn : *build_id_names)
     LOG(INFO) << "Build Id '" << binary_content.build_id << "' has filename '"
-              << fn << "'.";
+              << fn.getKey().str() << "'.";
   return *build_id_names;
 }
 
@@ -227,9 +226,8 @@ absl::StatusOr<BinaryMMaps> SelectMMaps(
               .str());
     }
   } else {
-    mmap_selector =
-        std::make_unique<MMapSelector>(absl::flat_hash_set<std::string>(
-            match_mmap_names.begin(), match_mmap_names.end()));
+    mmap_selector = std::make_unique<MMapSelector>(
+        llvm::StringSet<>(llvm::from_range, match_mmap_names));
   }
 
   BinaryMMaps binary_mmaps;

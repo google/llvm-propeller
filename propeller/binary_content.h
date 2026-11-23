@@ -22,9 +22,9 @@
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
@@ -77,7 +77,7 @@ struct BinaryContent {
     // information for the module, however, that would need to build this tool
     // again kernel headers.
     // https://source.corp.google.com/h/prodkernel/kernel/release/11xx/+/next:include/linux/module.h;l=365;bpv=1;bpt=0;drc=f2a96a349893fdff944b710ee86d1106de088a40
-    absl::flat_hash_map<llvm::StringRef, llvm::StringRef> modinfo;
+    llvm::DenseMap<llvm::StringRef, llvm::StringRef> modinfo;
   };
 
   std::string file_name;
@@ -124,7 +124,7 @@ class ELFFileUtilBase {
       BinaryContent& binary_content) = 0;
 
   // Parses (key, value) pairs in `section_content` and store them in `modinfo`.
-  static absl::StatusOr<absl::flat_hash_map<llvm::StringRef, llvm::StringRef>>
+  static absl::StatusOr<llvm::DenseMap<llvm::StringRef, llvm::StringRef>>
   ParseModInfoSectionContent(llvm::StringRef section_content);
 
  protected:
@@ -152,7 +152,7 @@ absl::StatusOr<int64_t> GetSymbolAddress(
     const llvm::object::ObjectFile& object_file, llvm::StringRef symbol_name);
 
 // Returns the binary's function symbols by reading from its symbol table.
-absl::flat_hash_map<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
+llvm::DenseMap<uint64_t, llvm::SmallVector<llvm::object::ELFSymbolRef>>
 ReadSymbolTable(const BinaryContent& binary_content);
 
 // Returns the binary's thunk symbols by reading from its symbol table.
@@ -162,7 +162,7 @@ std::map<uint64_t, llvm::object::ELFSymbolRef> ReadThunkSymbols(
     const BinaryContent& binary_content);
 
 // Returns a map from function addresses to their symbol info.
-absl::flat_hash_map<uint64_t, FunctionSymbolInfo> GetSymbolInfoMap(
+llvm::DenseMap<uint64_t, FunctionSymbolInfo> GetSymbolInfoMap(
     const BinaryContent& binary_content);
 
 // Returns the binary's `BbAddrMapData`s by calling LLVM-side decoding function

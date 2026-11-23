@@ -22,14 +22,14 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
@@ -89,9 +89,9 @@ MATCHER_P4(BbEntryIs, id_matcher, offset_matcher, size_matcher,
          ExplainMatchResult(metadata_matcher, arg.MD, result_listener);
 }
 
-static absl::flat_hash_map<llvm::StringRef, BBAddrMap>
-GetBBAddrMapByFunctionName(const BinaryAddressMapper& binary_address_mapper) {
-  absl::flat_hash_map<llvm::StringRef, BBAddrMap> bb_addr_map_by_func_name;
+static llvm::DenseMap<llvm::StringRef, BBAddrMap> GetBBAddrMapByFunctionName(
+    const BinaryAddressMapper& binary_address_mapper) {
+  llvm::DenseMap<llvm::StringRef, BBAddrMap> bb_addr_map_by_func_name;
   for (const auto& [function_index, symbol_info] :
        binary_address_mapper.symbol_info_map()) {
     for (llvm::StringRef alias : symbol_info.aliases)
@@ -1204,7 +1204,7 @@ TEST(BinaryAddressMapper, CheckNoHotFunctions) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BinaryContent> binary_content,
                        GetBinaryContentFromYaml(kSampleSectionYaml));
   // Both addresses are inside `main` ([0x201810, 0x20190B)).
-  absl::flat_hash_set<uint64_t> hot_addresses = {0x201900, 0x201870};
+  llvm::DenseSet<uint64_t> hot_addresses = {0x201900, 0x201870};
 
   PropellerStats stats;
   PropellerOptions options;
